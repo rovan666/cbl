@@ -63,7 +63,7 @@ def case_webui_analyze_compile_errors():
     res = analyze("window 8000 ;\nblock a { cap: 100 ; source: @ ; }", MATERIALS)
     assert res["stage"] == "lex" and res["error"]["line"] == 2 and res["audit"] is None
     res = analyze("window 8000\nblock a { cap: 100 ; }", MATERIALS)
-    assert res["stage"] == "syntax" and res["error"]["line"] == 2
+    assert res["stage"] == "syntax" and res["error"]["line"] == 1, "缺分号报在缺的那一行"
     res = analyze('window 8000 ;\nblock a { source: chat_log ; cap: 100 ; }', MATERIALS)
     assert res["stage"] == "semantic" and [d["code"] for d in res["diags"]] == ["E601"], res["diags"]
     assert res["diags"][0]["text"].startswith("[错误] 行2 E601: ")

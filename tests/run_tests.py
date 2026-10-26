@@ -116,6 +116,28 @@ def case_enum_string_rejected():
         pass
 
 
+def case_strings_cannot_impersonate_terminals():
+    # 字符串的字面值与终结符相同也不能冒充：分号、条目名、顶层关键字、margin
+    for src in ('window 8000 ";"\nblock a { source: "a.txt" ; cap: 100 ; }',
+                'window 8000 ;\nblock a { "cap": 100 ; source: "a.txt" ; }',
+                '"window" 8000 ;\nblock a { source: "a.txt" ; cap: 100 ; }',
+                'window 8000 "margin" 0.8 ;\nblock a { source: "a.txt" ; cap: 100 ; }'):
+        try:
+            _compile_text(src)
+            raise AssertionError(f"应报语法错误：{src!r}")
+        except ParseError as e:
+            assert "字符串" in str(e), f"报错应说明读到的是字符串：{e}"
+
+
+def case_missing_semicolon_line():
+    # 缺分号报在缺的那一行（上一个 Token 所在行），并注明实际读到的 Token 在哪一行
+    try:
+        _compile_text("window 8000\nblock a { source: \"a.txt\" ; cap: 100 ; }")
+        raise AssertionError("缺分号应报语法错误")
+    except ParseError as e:
+        assert e.line == 1 and str(e).startswith("语法错误 行1:") and "（行2）" in str(e), str(e)
+
+
 def case_ir_source_kind():
     ir, _ = compile_file(os.path.join(ROOT, "examples", "medical_assistant.cbl"))
     kinds = {b["name"]: b["source_kind"] for b in ir["blocks"]}

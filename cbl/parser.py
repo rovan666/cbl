@@ -23,10 +23,21 @@ OVERFLOWS = ("truncate_tail", "rerank_drop", "summarize", "sliding_window", "err
 VIOLATION_LEVELS = ("warn", "error")
 
 
+def _describe(tok: Token) -> str:
+    """报错里怎么称呼读到的 Token：字符串要说明是字符串，否则 "high" 和 high 看起来一样。"""
+    if tok.kind == "EOF":
+        return "文件结尾"
+    if tok.kind == "STRING":
+        return f'字符串 "{tok.value}"'
+    return repr(tok.value)
+
+
 class ParseError(Exception):
-    def __init__(self, msg, token: Token):
-        super().__init__(f"语法错误 行{token.line}: {msg}，实际读到 {token.value!r}")
-        self.line = token.line
+    def __init__(self, msg, token: Token, line: int = None):
+        """line：报错行号，缺省为读到的 Token 所在行；缺分号时取上一个 Token 的行（人会去那一行找）。"""
+        self.line = line or token.line
+        where = f"（行{token.line}）" if token.line != self.line else ""
+        super().__init__(f"语法错误 行{self.line}: {msg}，实际读到 {_describe(token)}{where}")
 
 
 class Parser:
@@ -44,11 +55,17 @@ class Parser:
             self.pos += 1
         return tok
 
+    @staticmethod
+    def _is(tok: Token, value: str) -> bool:
+        """终结符匹配：值相同且必须是关键字或界符——字符串 ";"、"cap" 不能冒充终结符。"""
+        return tok.value == value and tok.kind in ("KEYWORD", "SYMBOL")
+
     def expect(self, value: str, what: str = "") -> Token:
-        """断言下一个 Token 是指定值，否则报错。what 用于拼错误信息。"""
+        """断言下一个 Token 是指定终结符，否则报错。what 用于拼错误信息。"""
         tok = self.peek()
-        if tok.value != value:
-            raise ParseError(f"期望 '{value}'（{what or '语法要求'}）", tok)
+        if not self._is(tok, value):
+            line = self.tokens[self.pos - 1].line if value == ";" and self.pos > 0 else None
+            raise ParseError(f"期望 '{value}'（{what or '语法要求'}）", tok, line)
         return self.advance()
 
     def expect_kind(self, kind: str, what: str) -> Token:
@@ -61,14 +78,14 @@ class Parser:
     def parse_program(self) -> Program:
         prog = Program()
         while self.peek().kind != "EOF":
-            kw = self.peek().value
-            if kw == "window":
+            tok = self.peek()
+            if self._is(tok, "window"):
                 if prog.window is not None:
-                    raise ParseError("window 声明整个程序只能有一条", self.peek())
+                    raise ParseError("window 声明整个程序只能有一条", tok)
                 prog.window = self.parse_window()
-            elif kw == "block":
+            elif self._is(tok, "block"):
                 prog.blocks.append(self.parse_block())
-            elif kw == "rule":
+            elif self._is(tok, "rule"):
                 prog.rules.append(self.parse_rule())
             else:
                 raise ParseError("顶层只允许 window / block / rule 声明", self.peek())
@@ -82,7 +99,7 @@ class Parser:
         kw = self.expect("window", "窗口声明开头")
         cap = self.expect_kind("INT", "窗口容量（整数 token 数）")
         decl = WindowDecl(tokens=int(cap.value), line=kw.line)
-        if self.peek().value == "margin":      # 可选：window 8000 margin 0.85 ;
+        if self._is(self.peek(), "margin"):    # 可选：window 8000 margin 0.85 ;
             self.advance()
             m = self.peek()
             if m.kind not in ("INT", "FLOAT"):
@@ -98,9 +115,9 @@ class Parser:
         blk = BlockDecl(name=name.value, line=kw.line)
         self.expect("{", "块体开始")
         seen = set()
-        while self.peek().value != "}":
+        while not self._is(self.peek(), "}"):
             item = self.peek()
-            if item.value not in ("source", "cap", "priority", "overflow", "keep_recent"):
+            if item.kind != "KEYWORD" or item.value not in ("source", "cap", "priority", "overflow", "keep_recent"):
                 raise ParseError("块内只接受 source/cap/priority/overflow/keep_recent 条目", item)
             if item.value in seen:
                 raise ParseError(f"条目 '{item.value}' 在同一个块里重复声明", item)
@@ -139,7 +156,7 @@ class Parser:
         self.expect(":", "assert 条目")
         rule.metric = self.expect_kind("IDENT", "度量名").value
         op = self.peek()
-        if op.value not in ("<=", ">="):
+        if op.kind != "SYMBOL" or op.value not in ("<=", ">="):
             raise ParseError("断言只支持 <= 或 >=", op)
         rule.op = self.advance().value
         rule.operand = self.parse_operand()
@@ -155,11 +172,11 @@ class Parser:
         tok = self.peek()
         if tok.kind == "INT":
             value = int(self.advance().value)
-            if self.peek().value == "%":            # int "%"
+            if self._is(self.peek(), "%"):          # int "%"
                 self.advance()
                 return Operand("percent", value)
             return Operand("int", value)            # int
-        if tok.value == "window":                   # "window" "*" number
+        if self._is(tok, "window"):                 # "window" "*" number
             self.advance()
             self.expect("*", "window 倍数表达式")
             n = self.peek()
