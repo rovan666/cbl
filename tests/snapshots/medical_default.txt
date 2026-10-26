@@ -1,0 +1,11 @@
+=== CBL 组装审计报告 ===  window=8000  可用=7200  占用=6542 (81.8%)
+[must_keep] system_prompt   cap=1500 used=1238 完整保留
+[must_keep] allergy_notes   cap=300  used=92   完整保留
+[high]      retrieved_docs  cap=3200 used=3145 原始 4774
+            -> rerank_drop 丢弃相关度最低的 9 段
+[medium]    chat_history    cap=1600 used=1590 原始 2270
+            -> summarize 保留最近 4 轮原文，早期 4 轮压缩为摘要（404 token）
+[low]       tool_output     cap=500  used=477  原始 658
+            -> truncate_tail 截断尾部 181 token
+规则检查：budget_margin  通过 (7100 <= 7200)
+          no_starvation  通过 (最小有效额度 300 >= 100)

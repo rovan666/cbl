@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""CBL 骨架自检脚本：验证编译前端（lexer → parser → semantic → IR）可用。
+"""CBL 自检脚本：编译前端（lexer → parser → semantic → IR）+ 执行引擎与审计报告。
 
 用法（项目根目录）：python tests/run_tests.py
+引擎用例在 tests/engine_cases.py，这里统一收集运行。
 """
 import os
 import sys
@@ -14,6 +15,9 @@ from cbl.lexer import LexError
 from cbl.parser import ParseError
 from cbl.semantic import CATALOG, check, has_error
 from cbl.ast_nodes import Program, WindowDecl, BlockDecl, RuleDecl, Operand
+
+sys.path.insert(0, os.path.dirname(__file__))
+from engine_cases import *  # noqa: E402,F401,F403  引擎用例（case_ 开头）一并收集
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 results = []

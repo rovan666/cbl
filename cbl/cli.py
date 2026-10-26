@@ -2,16 +2,25 @@
 """CBL 命令行入口。
 
 用法（在 cbl 项目根目录下）：
-    python -m cbl check examples/medical_assistant.cbl   # 编译检查 + 输出 JSON 计划
-    python -m cbl run   examples/medical_assistant.cbl   # TODO：接执行引擎
+    python -m cbl check examples/medical_assistant.cbl        # 编译检查 + 输出 JSON 计划
+    python -m cbl run   examples/medical_assistant.cbl        # 编译 + 组装，打印审计报告
+        [--materials 目录]   材料目录，缺省为 .cbl 同目录下的 materials/
+        [--budget N]         本次可用额度 B，缺省 window×margin
+        [--query 文本]       本轮用户提问，缺省读材料目录下的 query.txt
+        [--out 文件]         最终 Prompt 写入文件
+        [--json 文件]        审计记录（JSON）写入文件
 """
+import argparse
 import json
+import os
 import sys
 
 from .lexer import tokenize, LexError
 from .parser import parse, ParseError
 from .semantic import check, has_error
 from .ir import to_ir
+from .engine import Context, AssemblyError, assemble
+from .report import render_text, render_json
 
 
 def compile_file(path: str):
@@ -26,14 +35,24 @@ def compile_file(path: str):
     return to_ir(prog), diags        # 生成 JSON 组装计划
 
 
+def _write(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def main(argv=None):
-    argv = argv or sys.argv[1:]
-    if len(argv) != 2 or argv[0] not in ("check", "run"):
-        print(__doc__)
-        return 2
-    cmd, path = argv
+    ap = argparse.ArgumentParser(prog="python -m cbl", description="CBL 上下文预算语言")
+    ap.add_argument("cmd", choices=["check", "run"])
+    ap.add_argument("path")
+    ap.add_argument("--materials")
+    ap.add_argument("--budget", type=int)
+    ap.add_argument("--query")
+    ap.add_argument("--out")
+    ap.add_argument("--json")
+    args = ap.parse_args(argv)
+
     try:
-        ir, diags = compile_file(path)
+        ir, diags = compile_file(args.path)
     except (LexError, ParseError) as e:
         print(e)
         return 1
@@ -42,10 +61,24 @@ def main(argv=None):
     if ir is None:
         print("编译失败：存在错误级诊断")
         return 1
-    print(json.dumps(ir, ensure_ascii=False, indent=2))
-    if cmd == "run":
-        print("\n[TODO] 执行引擎尚未实现（杨晨），目前只能生成 JSON 计划")
-    return 0
+    if args.cmd == "check":
+        print(json.dumps(ir, ensure_ascii=False, indent=2))
+        return 0
+
+    materials = args.materials or os.path.join(os.path.dirname(os.path.abspath(args.path)), "materials")
+    ctx = Context.from_dir(materials, query=args.query, budget=args.budget)
+    try:
+        prompt, audit = assemble(ir, ctx)
+        code = 0
+    except AssemblyError as e:
+        prompt, audit, code = None, e.audit, 1
+    print(render_text(audit))
+    if args.json:
+        _write(args.json, render_json(audit))
+    if args.out and prompt is not None:
+        _write(args.out, prompt)
+        print(f"\n最终 Prompt 已写入 {args.out}")
+    return code
 
 
 if __name__ == "__main__":

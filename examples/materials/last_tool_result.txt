@@ -1,0 +1,12 @@
+{"tool": "drug_safety_lookup", "status": "ok", "query": {"allergy": "penicillin (severe, immediate-type)", "indication": "streptococcal pharyngitis"},
+ "results": [
+  {"drug": "amoxicillin", "class": "penicillin", "verdict": "contraindicated", "note": "同类药物严重过敏史，禁止使用"},
+  {"drug": "penicillin V", "class": "penicillin", "verdict": "contraindicated", "note": "同类药物严重过敏史，禁止使用"},
+  {"drug": "cefalexin", "class": "cephalosporin (1st gen)", "verdict": "avoid", "note": "速发型严重青霉素过敏者一般避免使用，需医生评估"},
+  {"drug": "azithromycin", "class": "macrolide", "verdict": "alternative", "note": "可作为替代选择；注意当地耐药率及 QT 间期延长风险"},
+  {"drug": "clarithromycin", "class": "macrolide", "verdict": "alternative", "note": "可作为替代选择；与多种药物存在相互作用，需核对合并用药"},
+  {"drug": "clindamycin", "class": "lincosamide", "verdict": "alternative", "note": "可作为替代选择；警惕抗生素相关性腹泻"}
+ ],
+ "disclaimer": "本结果仅为用药安全核对参考，处方药的选择、剂量与疗程须由执业医师决定。",
+ "source": "demo drug database v0.3 (synthetic data for CBL demo)",
+ "latency_ms": 184}
