@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CBL 预算实验台</title>
+<link rel="stylesheet" href="/static/report.css">
+<style>
+  .topbar { background: #0f1524; color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 19px; }
+  .topbar .sub { font-size: 13px; color: #a9b2c6; }
+  .topbar .grow { flex: 1; }
+  .topbar .chip { font: 12.5px var(--mono); color: #cdd3e1; background: #1d2740; border: 1px solid #2c3a5c; padding: 3px 10px; border-radius: 999px; }
+  .btn { font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--accent); }
+  .btn.dark { border-color: #3a4a70; background: #1d2740; color: #fff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn:focus-visible, input:focus-visible, textarea:focus-visible, .preset:focus-visible { outline: 3px solid #9db7ff; outline-offset: 1px; }
+
+  .layout { display: grid; grid-template-columns: minmax(360px, 440px) minmax(0, 1fr); gap: 18px; padding: 18px 24px 40px; max-width: 1560px; margin: 0 auto; align-items: start; }
+  aside { position: sticky; top: 14px; display: grid; gap: 14px; }
+  main, #view { display: grid; gap: 16px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+
+  /* 编辑器 */
+  .editor { display: grid; grid-template-columns: 44px 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fbfcfd; height: 46vh; min-height: 300px; }
+  .gutter { margin: 0; padding: 10px 6px 10px 0; text-align: right; font: 13px/1.6 var(--mono); color: #a0a8b8; background: #f1f3f7; border-right: 1px solid var(--line); overflow: hidden; user-select: none; white-space: pre; }
+  .gutter .e { color: #fff; background: var(--bad); border-radius: 3px; padding: 0 3px; }
+  .gutter .w { color: #fff; background: var(--warn); border-radius: 3px; padding: 0 3px; }
+  textarea.src-edit { border: 0; resize: none; padding: 10px 12px; font: 13px/1.6 var(--mono); color: var(--ink); background: transparent; white-space: pre; overflow: auto; tab-size: 4; }
+  textarea.src-edit:focus { outline: none; }
+  .editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #dbe5ff; }
+  .ed-tools { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); }
+  .ed-tools button { font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+
+  .diags { display: grid; gap: 6px; }
+  .diag { display: grid; grid-template-columns: auto 1fr; gap: 8px; font-size: 13px; padding: 7px 10px; border-radius: 7px; border: 1px solid; cursor: pointer; text-align: left; font-family: inherit; }
+  .diag .tag { font-weight: 700; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .diag.err { background: var(--bad-t); border-color: #f4b8b1; color: #7a1a12; }
+  .diag.warn { background: var(--warn-t); border-color: #f8d99a; color: #7a3306; }
+  .diag-ok { font-size: 13.5px; color: var(--ok); display: flex; align-items: center; gap: 8px; }
+  .diag-ok::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+
+  .q { width: 100%; font: inherit; font-size: 14px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+
+  /* 额度控制 */
+  .budget-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .budget-head .big { font-size: 34px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .budget-head .big small { font-size: 15px; font-weight: 600; color: var(--ink-3); margin-right: 6px; }
+  .budget-head input { width: 110px; font: 600 15px var(--sans); padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; font-variant-numeric: tabular-nums; }
+  .budget-head .hint { font-size: 13px; color: var(--ink-3); }
+  .slider { position: relative; margin: 16px 0 36px; }
+  .slider input[type=range] { width: 100%; margin: 0; height: 26px; background: transparent; -webkit-appearance: none; appearance: none; }
+  .slider input[type=range]::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bad-t) 0 var(--must-p), #e4e8ef var(--must-p) var(--cap-p), #dcf5e6 var(--cap-p) 100%); }
+  .slider input[type=range]::-moz-range-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bad-t) 0 var(--must-p), #e4e8ef var(--must-p) var(--cap-p), #dcf5e6 var(--cap-p) 100%); }
+  .slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -6px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(20,30,60,.35); cursor: grab; }
+  .slider input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(20,30,60,.35); cursor: grab; }
+  .tick { position: absolute; top: 30px; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; text-align: center; line-height: 1.3; cursor: pointer; background: none; border: 0; padding: 0; font-family: inherit; }
+  .tick::before { content: ""; display: block; width: 2px; height: 8px; background: var(--ink-3); margin: 0 auto 2px; }
+  .tick b { display: block; font-variant-numeric: tabular-nums; }
+  .tick.must { color: var(--bad); } .tick.must::before { background: var(--bad); }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; }
+  .preset { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink-2); cursor: pointer; }
+  .preset:hover { border-color: var(--accent); color: var(--accent); }
+  .preset.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .zones { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-3); margin-top: 10px; }
+  .zones i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+
+  .compile-fail { text-align: center; padding: 48px 20px; color: var(--ink-2); }
+  .compile-fail strong { display: block; font-size: 18px; color: var(--bad); margin-bottom: 6px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 12px; }
+  .tab { font: inherit; font-size: 14px; padding: 8px 14px; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .busy { position: fixed; top: 0; left: 0; height: 3px; width: 100%; background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 50% 100%; animation: slide 0.9s linear infinite; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .busy.on { opacity: 1; }
+  @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+  .stale { opacity: .55; transition: opacity .15s; }
+  .toast { position: fixed; right: 20px; bottom: 20px; background: #0f1524; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; opacity: 0; transform: translateY(8px); transition: all .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+
+  @media (max-width: 1100px) {
+    /* minmax(0,1fr)：否则 <pre> 长行会把列撑得比屏幕还宽（1fr 的最小值是内容最小宽度） */
+    .layout { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+    aside { position: static; min-width: 0; }
+    .editor { height: 320px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .busy { animation: none; } * { transition: none !important; } }
+</style>
+</head>
+<body class="cbl">
+<div class="busy" id="busy"></div>
+<div class="topbar">
+  <div>
+    <h1>CBL 预算实验台</h1>
+    <div class="sub">上下文预算语言 · 编辑源码或拖动可用额度，实时观察 编译 → 组装 → 审计</div>
+  </div>
+  <div class="grow"></div>
+  <span class="chip" id="fileChip">—</span>
+  <span class="chip" id="matChip">—</span>
+  <button class="btn dark" id="exportBtn" type="button">导出 HTML 审计报告</button>
+</div>
+
+<div class="layout">
+  <aside>
+    <section class="panel">
+      <h2>源程序（.cbl，可直接编辑）</h2>
+      <div class="editor">
+        <pre class="gutter" id="gutter" aria-hidden="true">1</pre>
+        <textarea class="src-edit" id="src" spellcheck="false" aria-label="CBL 源程序" wrap="off"></textarea>
+      </div>
+      <div class="ed-tools"><span id="edInfo">—</span><button type="button" id="resetBtn">恢复示例源码</button></div>
+    </section>
+    <section class="panel">
+      <h2>编译诊断</h2>
+      <div class="diags" id="diags"><div class="muted">编译中…</div></div>
+    </section>
+    <section class="panel">
+      <h2>本轮用户提问（rerank_drop 与摘要的相关度依据）</h2>
+      <textarea class="q" id="query" rows="2" aria-label="本轮用户提问"></textarea>
+    </section>
+  </aside>
+
+  <main>
+    <section class="panel" id="budgetPanel">
+      <div class="budget-head">
+        <div class="big"><small>可用额度</small>B = <span id="bigB">—</span></div>
+        <input id="bNum" type="number" min="0" step="50" aria-label="可用额度 B">
+        <span class="hint" id="bHint"></span>
+      </div>
+      <div class="slider" id="slider">
+        <input id="bRange" type="range" min="0" max="8000" step="10" aria-label="可用额度滑块">
+      </div>
+      <div class="presets" id="presets"></div>
+      <div class="zones">
+        <span><i style="background:var(--bad-t);border:1px solid #f4b8b1"></i>低于死保总额：无解，拒绝组装</span>
+        <span><i style="background:#e4e8ef"></i>低于 cap 总和：按 low → medium → high 逐级压缩</span>
+        <span><i style="background:#dcf5e6"></i>额度充足：每块即得其 cap</span>
+      </div>
+    </section>
+
+    <div id="view"></div>
+
+    <section class="panel" id="tabsPanel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-tab="text">文本审计报告</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="prompt">最终 Prompt</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="audit">审计记录 JSON</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="ir">组装计划 IR</button>
+      </div>
+      <pre class="box" id="tabBody"></pre>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="/static/report.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var src = $("src"), gutter = $("gutter"), query = $("query");
+  var bRange = $("bRange"), bNum = $("bNum");
+  var state = { init: null, data: null, budget: null, tab: "text", seq: 0, ctrl: null, lastGood: null };
+
+  /* ---------- 编辑器：行号、Tab 缩进、跳转到行 ---------- */
+  function renderGutter(marks) {
+    var lines = src.value.split("\n").length;
+    gutter.textContent = "";
+    for (var i = 1; i <= lines; i++) {
+      var m = marks && marks[i];
+      if (m) gutter.appendChild(CBLReport.h("span", { cls: m, text: String(i) }));
+      else gutter.appendChild(document.createTextNode(String(i)));
+      if (i < lines) gutter.appendChild(document.createTextNode("\n"));
+    }
+    gutter.scrollTop = src.scrollTop;
+    $("edInfo").textContent = lines + " 行 · " + src.value.length + " 字符";
+  }
+  src.addEventListener("scroll", function () { gutter.scrollTop = src.scrollTop; });
+  src.addEventListener("keydown", function (e) {
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      var s = src.selectionStart;
+      src.setRangeText("    ", s, src.selectionEnd, "end");
+      onSource();
+    }
+  });
+  function gotoLine(line) {
+    var lines = src.value.split("\n"), start = 0;
+    for (var i = 0; i < line - 1 && i < lines.length; i++) start += lines[i].length + 1;
+    src.focus();
+    src.setSelectionRange(start, start + (lines[line - 1] || "").length);
+    var lh = parseFloat(getComputedStyle(src).lineHeight) || 21;
+    src.scrollTop = Math.max(0, (line - 4) * lh);
+  }
+
+  /* ---------- 诊断 ---------- */
+  function renderDiags(data) {
+    var box = $("diags"), marks = {};
+    box.textContent = "";
+    var items = [];
+    if (data.error) items.push({ cls: "err", line: data.error.line,
+      tag: data.stage === "lex" ? "词法错误" : "语法错误", msg: data.error.message });
+    data.diags.forEach(function (d) {
+      items.push({ cls: d.level === "错误" ? "err" : "warn", line: d.line,
+        tag: "[" + d.level + "] 行" + d.line + " " + d.code, msg: d.message });
+    });
+    if (!items.length) {
+      box.appendChild(CBLReport.h("div", { cls: "diag-ok", text: "编译通过：词法、语法、九条语义约束全部满足" }));
+    }
+    items.forEach(function (it) {
+      if (it.line) marks[it.line] = marks[it.line] === "e" || it.cls === "err" ? "e" : "w";
+      var b = CBLReport.h("button", { cls: "diag " + it.cls, type: "button", title: "跳到第 " + it.line + " 行" },
+        CBLReport.h("span", { cls: "tag", text: it.tag }), CBLReport.h("span", { text: it.msg }));
+      b.addEventListener("click", function () { if (it.line) gotoLine(it.line); });
+      box.appendChild(b);
+    });
+    renderGutter(marks);
+  }
+
+  /* ---------- 额度控制 ---------- */
+  function defaultB(ir) { return Math.floor(ir.window * ir.margin); }
+  function setupSlider(data) {
+    var ir = data.ir, W = ir.window, must = CBLReport.mustSum(data), caps = CBLReport.capSum(data), dB = defaultB(ir);
+    bRange.max = W; bNum.max = W;
+    var sl = $("slider");
+    sl.style.setProperty("--must-p", (must / W * 100) + "%");
+    sl.style.setProperty("--cap-p", (Math.min(caps, W) / W * 100) + "%");
+    Array.prototype.slice.call(sl.querySelectorAll(".tick")).forEach(function (t) { t.remove(); });
+    var ticks = [[must, "死保总额", "must"], [caps, "cap 总和", ""], [dB, "缺省 B", ""], [W, "window", ""]];
+    var placed = [];
+    ticks.forEach(function (t) {
+      if (t[0] > W) return;
+      var p = t[0] / W;
+      if (placed.some(function (q) { return Math.abs(q - p) < 0.06; })) return;   // 太近就不重复标
+      placed.push(p);
+      var el = CBLReport.h("button", { cls: "tick " + t[2], type: "button", title: "设为 " + t[0],
+        style: "left:calc(10px + " + p + " * (100% - 20px))" }, CBLReport.h("b", { text: t[0].toLocaleString("zh-CN") }), t[1]);
+      el.addEventListener("click", function () { setBudget(t[0]); });
+      sl.appendChild(el);
+    });
+    var presets = [[dB, "缺省"], [Math.round(dB * 5 / 6 / 100) * 100, "压缩场景"], [must, "死保极限"], [must - 100, "无解"]];
+    var box = $("presets"); box.textContent = "";
+    presets.forEach(function (p) {
+      if (p[0] < 0) return;
+      var b = CBLReport.h("button", { cls: "preset", type: "button", "data-b": p[0] }, p[1] + " " + p[0].toLocaleString("zh-CN"));
+      b.addEventListener("click", function () { setBudget(p[0]); });
+      box.appendChild(b);
+    });
+  }
+  function syncBudgetUI(B, data) {
+    bRange.value = B; bNum.value = B; $("bigB").textContent = B.toLocaleString("zh-CN");
+    Array.prototype.forEach.call(document.querySelectorAll(".preset"), function (p) {
+      p.classList.toggle("on", Number(p.getAttribute("data-b")) === B);
+    });
+    if (!data || !data.ir) return;
+    var must = CBLReport.mustSum(data), caps = CBLReport.capSum(data);
+    $("bHint").textContent = B < must ? "低于死保总额 " + must + "：预算无解，将拒绝组装"
+      : B < caps ? "比 cap 总和 " + caps + " 少 " + (caps - B) + "：从低优先级开始压缩"
+      : "额度充足：每块都拿到自己的 cap";
+  }
+  function setBudget(B, fast) {
+    B = Math.max(0, Math.round(Number(B) || 0));
+    state.budget = B;
+    syncBudgetUI(B, state.lastGood);
+    var url = new URL(location.href); url.searchParams.set("budget", B);
+    history.replaceState(null, "", url);
+    schedule(fast ? 40 : 0);
+  }
+  bRange.addEventListener("input", function () { setBudget(bRange.value, true); });
+  bNum.addEventListener("change", function () { setBudget(bNum.value); });
+
+  /* ---------- 请求：防抖 + 只认最新响应 ---------- */
+  var timer = null;
+  function schedule(ms) { clearTimeout(timer); timer = setTimeout(analyze, ms); }
+  function payload() { return JSON.stringify({ source: src.value, budget: state.budget, query: query.value }); }
+  function analyze() {
+    var my = ++state.seq;
+    if (state.ctrl) state.ctrl.abort();
+    state.ctrl = new AbortController();
+    $("busy").classList.add("on");
+    $("view").classList.add("stale");
+    fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" },
+                            body: payload(), signal: state.ctrl.signal })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { if (my === state.seq) render(data); })
+      .catch(function (e) { if (e.name !== "AbortError") toast("请求失败：" + e.message); })
+      .finally(function () { if (my === state.seq) { $("busy").classList.remove("on"); $("view").classList.remove("stale"); } });
+  }
+  function onSource() { renderGutter(); schedule(350); }
+  src.addEventListener("input", onSource);
+  query.addEventListener("input", function () { schedule(400); });
+
+  /* ---------- 渲染 ---------- */
+  function render(data) {
+    state.data = data;
+    renderDiags(data);
+    var view = $("view");
+    var ok = !!data.audit;
+    bRange.disabled = bNum.disabled = $("exportBtn").disabled = !ok;   // 编译不通过时什么都做不了，别让控件看起来能用
+    if (!ok) {                                           // 编译未通过
+      view.textContent = "";
+      view.appendChild(CBLReport.h("section", { cls: "panel compile-fail" },
+        CBLReport.h("strong", { text: "编译未通过，未生成组装计划" }),
+        "修正左侧源码中标红的问题后，会自动重新编译并组装。"));
+      $("budgetPanel").classList.add("stale");
+      $("bHint").textContent = "编译通过后可调节可用额度";
+      renderTab();
+      return;
+    }
+    $("budgetPanel").classList.remove("stale");
+    var first = !state.lastGood || state.lastGood.ir.window !== data.ir.window ||
+                CBLReport.capSum(state.lastGood) !== CBLReport.capSum(data) ||
+                CBLReport.mustSum(state.lastGood) !== CBLReport.mustSum(data) ||
+                state.lastGood.ir.margin !== data.ir.margin;
+    state.lastGood = data;
+    if (first) setupSlider(data);
+    syncBudgetUI(data.audit.budget, data);
+    var open = {};
+    Array.prototype.forEach.call(view.querySelectorAll("article.blk"), function (a) {
+      var d = a.querySelector("details"); if (d && d.open) open[a.querySelector("h3").textContent] = true;
+    });
+    CBLReport.renderMain(view, data);
+    Array.prototype.forEach.call(view.querySelectorAll("article.blk"), function (a) {   // 保持展开状态
+      var d = a.querySelector("details"); if (d && open[a.querySelector("h3").textContent]) d.open = true;
+    });
+    renderTab();
+  }
+
+  /* ---------- 标签页 ---------- */
+  function renderTab() {
+    var d = state.data, body = $("tabBody"), t = state.tab;
+    body.classList.toggle("wrap", t === "prompt");
+    if (!d) { body.textContent = ""; return; }
+    if (t === "text") body.textContent = d.report_text || "（编译未通过，无审计报告）";
+    else if (t === "prompt") body.textContent = d.prompt || (d.stage === "rejected" ? "（拒绝组装：没有内容送入模型）" : "（编译未通过）");
+    else if (t === "audit") body.textContent = d.audit ? JSON.stringify(d.audit, null, 2) : "（无）";
+    else body.textContent = d.ir ? JSON.stringify(d.ir, null, 2) : "（编译未通过，未生成 IR）";
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+    b.addEventListener("click", function () {
+      state.tab = b.getAttribute("data-tab");
+      Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (x) {
+        x.setAttribute("aria-selected", String(x === b));
+      });
+      renderTab();
+    });
+  });
+
+  /* ---------- 导出 HTML 报告 ---------- */
+  $("exportBtn").addEventListener("click", function () {
+    var btn = this; btn.disabled = true;
+    fetch("/api/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload() })
+      .then(function (r) { if (!r.ok) return r.json().then(function (j) { throw new Error(j.error); }); return r.blob(); })
+      .then(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "cbl-审计报告-B" + (state.budget != null ? state.budget : "缺省") + ".html";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+        toast("已导出 " + a.download);
+      })
+      .catch(function (e) { toast("导出失败：" + e.message); })
+      .finally(function () { btn.disabled = false; });
+  });
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.classList.add("on");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("on"); }, 2600);
+  }
+
+  $("resetBtn").addEventListener("click", function () { src.value = state.init.source; onSource(); });
+
+  /* ---------- 启动 ---------- */
+  fetch("/api/init").then(function (r) { return r.json(); }).then(function (init) {
+    state.init = init;
+    src.value = init.source; query.value = init.query;
+    $("fileChip").textContent = init.file; $("matChip").textContent = "材料：" + init.materials;
+    var b = new URL(location.href).searchParams.get("budget");
+    state.budget = b !== null && b !== "" && !isNaN(Number(b)) ? Math.round(Number(b)) : null;
+    renderGutter();
+    analyze();
+  }).catch(function (e) { toast("初始化失败：" + e.message); });
+})();
+</script>
+</body>
+</html>

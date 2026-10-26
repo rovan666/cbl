@@ -25,15 +25,21 @@ cbl/
 │   ├── semantic.py      #   语义检查器（九条约束，错误目录+表驱动）—— 舒若凡
 │   ├── ir.py            #   AST → JSON 组装计划（中间表示）
 │   ├── engine.py        #   预算执行引擎（优先级压缩 + 五种超限策略）—— 杨晨
-│   ├── report.py        #   审计报告（JSON / 文本；HTML 待做）  —— 祝梦倩
-│   └── cli.py           #   命令行入口（check / run）
+│   ├── report.py        #   审计报告（JSON / 文本 / 独立 HTML）  —— 祝梦倩
+│   ├── webui.py         #   网页演示：预算实验台（零依赖 HTTP 服务）
+│   ├── static/          #   页面与 HTML 报告共用的渲染器（report.js / report.css / demo.html）
+│   └── cli.py           #   命令行入口（check / run / serve）
 ├── examples/
 │   ├── medical_assistant.cbl   # 医疗助手完整示例
 │   └── materials/              # 示例上下文材料（见其中 README）
-└── tests/
-    ├── run_tests.py            # 自检脚本（统一入口）
-    ├── engine_cases.py         # 引擎与报告用例
-    └── snapshots/              # 审计报告快照
+├── tests/
+│   ├── run_tests.py            # 自检脚本（统一入口）
+│   ├── engine_cases.py         # 引擎与报告用例
+│   ├── webui_cases.py          # 网页演示、HTML 报告、HTTP 接口用例
+│   └── snapshots/              # 审计报告快照
+├── docs/demo.png               # 预算实验台截图
+├── 启动预算实验台.bat          # Windows 双击启动
+└── 手机访问预算实验台.bat      # 局域网模式（手机同一 Wi-Fi 访问）
 ```
 
 ## 怎么跑
@@ -44,8 +50,9 @@ cbl/
 cd cbl
 python -m cbl check examples/medical_assistant.cbl   # 编译检查，输出 JSON 计划
 python -m cbl run   examples/medical_assistant.cbl   # 编译 + 组装，打印审计报告
-python -m cbl run   examples/medical_assistant.cbl --budget 6000 --out prompt.txt --json audit.json
-python tests/run_tests.py                            # 跑自检（45 个用例）
+python -m cbl run   examples/medical_assistant.cbl --budget 6000 --out prompt.txt --json audit.json --html audit.html
+python -m cbl serve                                  # 网页演示：预算实验台（见下节）
+python tests/run_tests.py                            # 跑自检（52 个用例）
 ```
 
 `run` 的输出示例（缺省可用额度 7200）：
@@ -67,6 +74,23 @@ python tests/run_tests.py                            # 跑自检（45 个用例�
 `--budget 6000` 时 low 级的 tool_output 被压缩到 0 整块舍弃、medium 级的 chat_history
 压缩到 1000，动态断言 no_starvation 报警告——与计划书第 5 节的压缩示例一致。
 
+## 预算实验台（网页演示）
+
+```bash
+python -m cbl serve            # 浏览器自动打开 http://127.0.0.1:8000；Windows 也可双击 启动预算实验台.bat
+python -m cbl serve --lan      # 局域网模式：手机连同一 Wi-Fi 即可访问
+```
+
+![预算实验台：可用额度调到 6000 时，tool_output 被整块舍弃、chat_history 被压缩](docs/demo.png)
+
+- **拖动可用额度 B**：窗口条实时显示各块的有效额度与实际用量；滑块上标出死保总额（低于即无解）、
+  cap 总和（低于即开始压缩）、缺省 B 三个临界点，预设按钮一键切换场景
+- **直接编辑 .cbl 源码**：词法/语法/语义诊断带行号与错误编号实时显示，点击跳到对应行
+- **AI 实际看到了什么**：每块展开后逐段/逐轮标注 保留 / 部分保留 / 并入摘要 / 丢弃
+- **导出独立 HTML 审计报告**：与页面共用同一渲染器，单文件离线可看、可打印存档
+- 地址参数 `?budget=6000` 直接打开某个场景，便于答辩时切换与截图
+- 安全：字符串来源被限制在材料目录内（防止通过编辑源码读取任意文件）；请求体限 256KB
+
 ## 当前进度
 
 - [x] 词法分析器、语法分析器（第一版，可用）
@@ -74,7 +98,7 @@ python tests/run_tests.py                            # 跑自检（45 个用例�
 - [x] 静态断言（total_reserved）编译期求值；动态断言（every_block_min_tokens）留给引擎
 - [x] 预算执行引擎：可用额度与优先级压缩（low → medium → high）、五种超限策略、运行期断言
 - [x] 审计报告：JSON 主格式 + 文本视图；快照测试防止裁剪行为被悄悄改变
-- [ ] 审计报告 HTML 视图
-- [ ] 加分项：网页演示（拖动可用额度滑块，实时观察压缩与裁剪）
+- [x] 审计报告 HTML 视图（独立单文件，与网页共用渲染器）
+- [x] 加分项：网页演示「预算实验台」
 
 语言的完整定义（EBNF 文法、九条语义约束、运行期语义）与分工详情见课程开发计划书（未随仓库公开）。

@@ -18,6 +18,7 @@ from cbl.ast_nodes import Program, WindowDecl, BlockDecl, RuleDecl, Operand
 
 sys.path.insert(0, os.path.dirname(__file__))
 from engine_cases import *  # noqa: E402,F401,F403  引擎用例（case_ 开头）一并收集
+from webui_cases import *   # noqa: E402,F401,F403  网页演示与 HTML 报告用例
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 results = []

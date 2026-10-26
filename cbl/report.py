@@ -2,11 +2,16 @@
 """CBL 审计报告：把引擎产出的审计记录渲染成可存档的报告。
 
 审计记录本身就是 JSON 主格式（render_json）；纯文本视图用于课堂演示，
-格式与计划书第 5 节示例一致；HTML 视图供正式报告使用。
+格式与计划书第 5 节示例一致；HTML 视图供正式报告使用——它与网页演示共用
+static/report.js 渲染器，两边的视觉永远一致。
 
 负责人：祝梦倩
 """
+import datetime
 import json
+import os
+
+STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
 def render_json(audit: dict) -> str:
@@ -65,6 +70,50 @@ def render_text(audit: dict) -> str:
     return "\n".join(lines)
 
 
-def render_html(audit: dict, out_path: str) -> None:
-    """渲染 HTML 审计报告并写盘。TODO(祝梦倩)：下一步实现（逐块表格 + 用量条）。"""
-    raise NotImplementedError("HTML 报告待实现")
+def _static(name):
+    with open(os.path.join(STATIC, name), encoding="utf-8") as f:
+        return f.read()
+
+
+def _embed_json(obj):
+    """可安全放进 <script> 的 JSON：< > & 转义为 \\u 形式，材料里即使有 </script> 也截断不了脚本。"""
+    s = json.dumps(obj, ensure_ascii=False)
+    return s.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def build_html(data: dict) -> str:
+    """独立 HTML 审计报告：样式、渲染器、数据全部内嵌，单文件离线可看、可存档、可打印。
+    data 为 webui.analyze() 的结果（含审计记录、逐块视图、文本报告、最终 Prompt）。"""
+    data = dict(data)
+    data.setdefault("generated_at", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    a = data["audit"]
+    title = f"CBL 审计报告 · B={a['budget']} · {'拒绝组装' if data.get('stage') == 'rejected' else '组装完成'}"
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+{_static("report.css")}
+</style>
+</head>
+<body class="cbl">
+<div class="report" id="app"><noscript>本报告需要启用 JavaScript 显示；原始审计记录见页面源码中的 cbl-data。</noscript></div>
+<script type="application/json" id="cbl-data">{_embed_json(data)}</script>
+<script>
+{_static("report.js")}
+</script>
+<script>
+CBLReport.renderStatic(document.getElementById("app"),
+                       JSON.parse(document.getElementById("cbl-data").textContent));
+</script>
+</body>
+</html>
+"""
+
+
+def render_html(data: dict, out_path: str) -> None:
+    """把 build_html 的结果写盘。"""
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(build_html(data))

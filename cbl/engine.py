@@ -140,19 +140,32 @@ def _render_turns(messages):
     return turns
 
 
+class MaterialMissing(Exception):
+    """来源取不到：文件不存在、内置来源未提供、或路径越出材料目录。"""
+
+
+def _inside(root, path):
+    root, path = os.path.realpath(root), os.path.realpath(path)
+    return os.path.commonpath([root, path]) == root
+
+
 def load_material(block, ctx):
-    """返回 (units, sep, unit_name)；来源缺失返回 None。
-    会话历史按轮切分，其余文本按空行分段——它们是裁剪策略的最小单位。"""
+    """返回 (units, sep, unit_name)；取不到时抛 MaterialMissing（附原因）。
+    会话历史按轮切分，其余文本按空行分段——它们是裁剪策略的最小单位。
+    字符串来源只允许落在 ctx.root 之内：网页演示允许编辑源码，
+    不加限制的话写 "../../某文件" 就能读出材料目录外的任意文件。"""
     src = block["source"]
     if block["source_kind"] == "string":
         fp = os.path.join(ctx.root, src)
-        if not os.path.exists(fp):
-            return None
+        if os.path.isabs(src) or not _inside(ctx.root, fp):
+            raise MaterialMissing(f"来源 '{src}' 越出材料目录，已拒绝读取")
+        if not os.path.isfile(fp):
+            raise MaterialMissing(f"来源 '{src}' 不存在")
         with open(fp, encoding="utf-8") as f:
             raw = f.read()
     else:
         if src not in ctx.builtins:
-            return None
+            raise MaterialMissing(f"内置来源 '{src}' 本次未提供")
         raw = ctx.builtins[src]
     if isinstance(raw, list):
         return _render_turns(raw), "\n", "轮"
@@ -371,6 +384,13 @@ def eval_rules(plan, eff):
 
 def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_summary):
     """返回 (最终 Prompt, 审计记录)；拒绝组装时抛 AssemblyError（带审计记录）。"""
+    parts, audit = assemble_parts(plan, ctx, counter, summarizer)
+    return BLOCK_SEP.join(text for _, text in parts if text), audit   # 按声明顺序拼接（ⓓ）
+
+
+def assemble_parts(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_summary):
+    """同 assemble，但返回 ([(块名, 该块最终文本), ...], 审计记录)，按声明顺序；
+    被舍弃或来源缺失的块文本为空串。网页演示据此逐块展示"AI 实际看到了什么"。"""
     window = plan["window"]
     budget = ctx.budget if ctx.budget is not None else int(window * plan["margin"])
     audit = {"window": window, "budget": budget, "query": ctx.query, "status": "ok",
@@ -386,17 +406,20 @@ def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_
     except ValueError as e:
         reject(str(e))
 
-    texts = []
+    parts = []
     for b in plan["blocks"]:                                         # 第 3 步
         entry = {"name": b["name"], "priority": b["priority"], "cap": b["cap"],
                  "effective": eff[b["name"]], "original": 0, "used": 0,
                  "action": "完整保留", "detail": ""}
         audit["blocks"].append(entry)
-        mat = load_material(b, ctx)
-        if mat is None:
+        try:
+            mat = load_material(b, ctx)
+        except MaterialMissing as e:
             if b["priority"] == "must_keep":
-                reject(f"must_keep 块 '{b['name']}' 的来源 '{b['source']}' 缺失，无法保证死保信息")
-            entry.update(action="来源缺失", detail=f"来源 '{b['source']}' 不存在，按空内容处理")
+                entry.update(action="来源缺失", detail=str(e))
+                reject(f"must_keep 块 '{b['name']}' 来源缺失（{e}），无法保证死保信息")
+            entry.update(action="来源缺失", detail=f"{e}，按空内容处理")
+            parts.append((b["name"], ""))
             continue
         units, sep, _ = mat
         text = sep.join(units)
@@ -405,6 +428,7 @@ def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_
         if limit == 0:
             entry["action"] = "整块舍弃"
             entry["detail"] = "有效额度被压缩为 0"
+            parts.append((b["name"], ""))
             continue
         if entry["original"] > limit:
             try:
@@ -415,8 +439,7 @@ def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_
                 reject(str(e))
             entry.update(action=b["overflow"], detail=detail)
         entry["used"] = counter(text)
-        if text:
-            texts.append(text)
+        parts.append((b["name"], text))
 
     audit["total_used"] = sum(e["used"] for e in audit["blocks"])
     audit["rules"] = eval_rules(plan, eff)
@@ -424,4 +447,4 @@ def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_
         if not r["passed"] and r["level"] == "error":
             reject(f"规则 '{r['name']}' 不成立（{r['metric']}={r['actual']} {r['op']} "
                    f"{r['bound']:g} 为假），on_violation 为 error，拒绝组装")
-    return BLOCK_SEP.join(texts), audit                              # 按声明顺序拼接（ⓓ）
+    return parts, audit
