@@ -27,7 +27,7 @@ from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name
 
-COMMIT = "50b4276"
+COMMIT = "32d8218"
 REPO = "https://github.com/rovan666/cbl"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -124,10 +124,15 @@ def excerpts_for(chap):
                                            py_block("cbl/parser.py", find_line("cbl/parser.py", "def expect(self"))[1]),
                          "所有产生式都靠 <code>expect</code> 消耗终结符。<code>_is</code> 要求 Token 的<b>类型</b>是关键字或界符——"
                          "字符串 <code>\";\"</code> 值相同也不能冒充分号（提交 50b4276 修复的漏洞）。"
-                         "缺分号时把报错行改为上一个 Token 所在行。"))
+                         "缺分号时把报错位置改为上一个 Token 的结尾（行列）。"))
+        E.append(excerpt("cbl/parser.py", (find_line("cbl/parser.py", "def _sync_top"),
+                                           py_block("cbl/parser.py", find_line("cbl/parser.py", "def _sync_item"))[1]),
+                         "<b>恐慌模式错误恢复</b>：出错后跳到下一个同步点继续分析——顶层认 <code>;</code>、<code>}</code> "
+                         "和下一条声明的开头，块内认 <code>;</code> 和 <code>}</code>（留给外层消费）。"
+                         "全部语法错误收进 <code>ParseErrors</code> 一次报出，不再是只报第一个。"))
         E.append(excerpt("cbl/parser.py", py_block("cbl/parser.py", find_line("cbl/parser.py", "def parse_block")),
-                         "<b>一个产生式 = 一个函数</b>：块体 <code>{ blockItem }</code> 写成 while 循环，循环里看<b>一个</b>条目关键字决定走哪条分支（LL(1)）。"
-                         "条目重复、类型不对都在这里报错；最后为 must_keep 块填入缺省 overflow = error。"))
+                         "<b>一个产生式 = 一个函数</b>：块体 <code>{ blockItem }</code> 写成 while 循环，循环里看<b>一个</b>条目关键字决定走哪条分支（LL(1)）；"
+                         "单条条目出错只跳过这一条（_sync_item），后面的条目照常解析。最后为 must_keep 块填入缺省 overflow = error。"))
     elif chap == 2:
         E.append(excerpt("cbl/semantic.py", py_block("cbl/semantic.py", find_line("cbl/semantic.py", "CATALOG = {")),
                          "<b>错误目录</b>：16 项，每项 = (所属约束, 级别, 说明模板)。级别为 None 的 R702 由规则自己的 on_violation 决定。"
@@ -180,7 +185,8 @@ OVERVIEW = {
     1: dict(files="tokens.py · lexer.py · parser.py · ast_nodes.py",
             ideas=["手写确定有限自动机做词法：7 个分支、最长匹配",
                    "递归下降、LL(1)：一个产生式一个函数，看一个 Token 定分支",
-                   "终结符匹配同时检查类型；报错精确到行号、期望符号、实际读到什么"],
+                   "终结符匹配同时检查类型；报错精确到行列号",
+                   "恐慌模式错误恢复：跳到 ; 或 } 继续，一次报出全部语法错误"],
             asks=["为什么手写，不用 ANTLR？", "文法为什么是 LL(1)？", "能一次报出多个语法错误吗？"]),
     2: dict(files="semantic.py · ir.py · tests/run_tests.py（PAIRS）",
             ideas=["错误目录 16 项 + 表驱动检查表，新增约束只需三步",
@@ -190,7 +196,8 @@ OVERVIEW = {
     3: dict(files="engine.py · examples/materials/ · tests/engine_cases.py",
             ideas=["三步走：定可用额度 B → 逐级压缩有效额度 → 执行五种策略",
                    "最大余数法、保守 token 估算 + 二分截断",
-                   "BM25（中文二字组合）与规则式摘要；计数器、摘要器可插拔"],
+                   "BM25（中文二字组合）与规则式摘要；计数器、摘要器可插拔",
+                   "validate_plan 入口校验：引擎不假设 IR 来自本编译器"],
             asks=["额度为什么不回流？", "为什么先把 low 压到 0？", "token 估算不准怎么办？"]),
     4: dict(files="report.py · webui.py · static/（report.js · report.css · demo.html）· tests/webui_cases.py",
             ideas=["审计记录 JSON 为主，文本 / HTML / 网页是它的视图",
@@ -245,7 +252,7 @@ GLOSSARY = [
     ("Token", "词法分析的产物：(类型, 值, 行, 列)。类型有 KEYWORD / IDENT / INT / FLOAT / STRING / SYMBOL / EOF。"),
     ("AST", "抽象语法树：语法分析的产物，Program 下挂 WindowDecl、BlockDecl、RuleDecl，每个节点带行号。"),
     ("IR / JSON 组装计划", "AST 通过语义检查后翻译成的 JSON，引擎只读它；所有缺省值都已显式写出。"),
-    ("cap", "块的额度上限（token），在源码里声明。"),
+    ("cap", "块的额度上限（token）。可写绝对值，也可写相对值（40% / window*0.4），编译期折算成绝对值。"),
     ("可用额度 B", "本次组装能用的总额度，缺省 window × margin，调用方可以调小。"),
     ("有效额度", "压缩后某块本次实际可用的额度；B 充足时等于 cap，不足时按优先级削减。"),
     ("margin", "预留系数（缺省 0.9），window 的其余部分留给模型生成回答。"),
@@ -260,7 +267,7 @@ GLOSSARY = [
 ]
 
 COMMANDS = [
-    ("python tests/run_tests.py", "跑全部 54 个用例"),
+    ("python tests/run_tests.py", "跑全部 65 个用例"),
     ("python -m cbl check examples/medical_assistant.cbl", "编译检查，输出 JSON 组装计划"),
     ("python -m cbl run examples/medical_assistant.cbl", "编译 + 组装，打印文本审计报告"),
     ("… run … --budget 6000", "指定可用额度 B"),
@@ -508,7 +515,7 @@ def build_html(toc_pages=None):
              f'<div class="lead">每人一章：先读什么、为什么这样设计、怎么亲手验证、可能被问什么、局限在哪。'
              f'代码摘录与链接全部固定在提交 {COMMIT}，与仓库逐行一致；文中每条命令都实际跑过。</div>'
              f'<div class="team">{team}</div>'
-             f'<div class="meta"><span>仓库 github.com/rovan666/cbl · 提交 {COMMIT} · 测试 54/54 通过</span><span>{today}</span></div></section>')
+             f'<div class="meta"><span>仓库 github.com/rovan666/cbl · 提交 {COMMIT} · 测试 65/65 通过</span><span>{today}</span></div></section>')
     css = CSS.replace("COMMIT", COMMIT) + HtmlFormatter(style="xcode").get_style_defs(".hl")
     doc = (f'<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>CBL 代码审阅指南</title>'
            f'<style>{css}</style></head><body>{cover}'
