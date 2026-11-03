@@ -1,7 +1,26 @@
 # CBL — 上下文预算语言（Context Budget Language）
 
+[![tests](https://github.com/rovan666/cbl/actions/workflows/tests.yml/badge.svg)](https://github.com/rovan666/cbl/actions/workflows/tests.yml)
+
 > 编译原理 DSL 实验项目：用一门声明式小语言描述"AI 上下文窗口里，
 > 各类信息各占多少额度、优先级如何、超额后如何处理"。
+
+## 为什么需要它（2026 年的背景）
+
+大模型上下文窗口普遍突破百万 token 之后，"把所有信息都塞进去"依然不是答案：
+
+- **信噪比**：无关信息占比超过约 30% 时，模型的指令遵循能力显著下降——
+  窗口越大，"什么不该进窗口"越重要；
+- **成本**：塞满一个 1M 窗口的输入费用，在不同模型间相差可达两个数量级，
+  输入侧的预算控制直接影响每次调用的成本；
+- **窗口增长只是延后问题**：agent 长任务里，工具结果与对话历史的膨胀速度
+  往往快过窗口的扩张速度。
+
+行业也在达成共识：Gartner《2026 企业 AI 应用成熟度曲线》显示 Prompt Engineering
+热度下滑、Context Engineering 崛起；工程界的对策（在 Python 里手写 token 计数 +
+截断）缺少语言级的检查与审计。**CBL 把"预算分配"升格为一门正式语言**：
+声明什么必须死保、什么可以压缩、超额按什么策略处理，由编译器做一致性检查，
+由执行引擎落实并产出审计报告。
 
 ## 这是什么
 
@@ -31,6 +50,7 @@ cbl/
 │   └── cli.py           #   命令行入口（check / run / serve）
 ├── examples/
 │   ├── medical_assistant.cbl   # 医疗助手完整示例
+│   ├── plugin_demo.py          # 扩展点示例：换 tiktoken 精确计数 / LLM 摘要器
 │   └── materials/              # 示例上下文材料（见其中 README）
 ├── tests/
 │   ├── run_tests.py            # 自检脚本（统一入口）
@@ -52,8 +72,22 @@ python -m cbl check examples/medical_assistant.cbl   # 编译检查，输出 JSO
 python -m cbl run   examples/medical_assistant.cbl   # 编译 + 组装，打印审计报告
 python -m cbl run   examples/medical_assistant.cbl --budget 6000 --out prompt.txt --json audit.json --html audit.html
 python -m cbl serve                                  # 网页演示：预算实验台（见下节）
-python tests/run_tests.py                            # 跑自检（52 个用例）
+python tests/run_tests.py                            # 跑自检（65 个用例）
 ```
+
+cap 除了绝对值，也支持与窗口挂钩的相对写法（换窗口尺寸时不用重算各块额度）：
+
+```cbl
+block retrieved_docs {
+    source: "kb/medical_kb.txt" ;
+    cap: 40% ;                # 或 cap: window * 0.4 —— 与断言右值同一文法
+    priority: high ;
+    overflow: rerank_drop ;
+}
+```
+
+相对额度在编译期按 window 折算成绝对 token 数（四舍五入），JSON 计划里仍是整数；
+折算后照常参与 ①~⑨ 全部语义检查（如总额超窗报 E101、折算为 0 报 E802）。
 
 `run` 的输出示例（缺省可用额度 7200）：
 
@@ -93,13 +127,16 @@ python -m cbl serve --lan      # 局域网模式：手机连同一 Wi-Fi 即可�
 
 ## 当前进度
 
-- [x] 词法分析器、语法分析器（第一版，可用）
+- [x] 词法分析器、语法分析器（手写递归下降；panic-mode 错误恢复，一次编译报出全部语法错误，带行列号）
 - [x] 语义检查 ①~⑨ 全部完成（错误目录 `semantic.CATALOG` 共 16 项，每项配正例/反例测试）
 - [x] 静态断言（total_reserved）编译期求值；动态断言（every_block_min_tokens）留给引擎
 - [x] 预算执行引擎：可用额度与优先级压缩（low → medium → high）、五种超限策略、运行期断言
+- [x] IR 入口校验 `engine.validate_plan`：引擎不假设计划来自本编译器，非法计划一次列出全部问题
+- [x] cap 支持相对额度（`cap: 40%` / `cap: window * 0.4`），编译期折算为绝对值
 - [x] 审计报告：JSON 主格式 + 文本视图；快照测试防止裁剪行为被悄悄改变
 - [x] 审计报告 HTML 视图（独立单文件，与网页共用渲染器）
 - [x] 加分项：网页演示「预算实验台」
+- [x] 可插拔扩展点：token 计数器（可换 tiktoken）与摘要器（可换 LLM），示例见 `examples/plugin_demo.py`
 
 语言的完整定义（EBNF 文法、九条语义约束、运行期语义）与分工详情见课程开发计划书（未随仓库公开）。
 

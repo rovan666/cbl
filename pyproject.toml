@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cbl-budget"
+version = "0.2.0"
+description = "CBL 上下文预算语言：声明式描述 AI 上下文窗口的 token 预算分配"
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["llm", "context-engineering", "token-budget", "dsl", "compiler"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.urls]
+Repository = "https://github.com/rovan666/cbl"
+
+[project.scripts]
+cbl = "cbl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cbl*"]
+
+[tool.setuptools.package-data]
+cbl = ["static/*"]
