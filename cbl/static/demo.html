@@ -198,8 +198,12 @@
     var box = $("diags"), marks = {};
     box.textContent = "";
     var items = [];
-    if (data.error) items.push({ cls: "err", line: data.error.line,
-      tag: data.stage === "lex" ? "词法错误" : "语法错误", msg: data.error.message });
+    var errs = (data.errors && data.errors.length) ? data.errors
+             : (data.error ? [data.error] : []);
+    errs.forEach(function (e) {
+      items.push({ cls: "err", line: e.line,
+        tag: data.stage === "lex" ? "词法错误" : "语法错误", msg: e.message });
+    });
     data.diags.forEach(function (d) {
       items.push({ cls: d.level === "错误" ? "err" : "warn", line: d.line,
         tag: "[" + d.level + "] 行" + d.line + " " + d.code, msg: d.message });

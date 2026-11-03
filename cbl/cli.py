@@ -19,7 +19,7 @@ import os
 import sys
 
 from .lexer import tokenize, LexError
-from .parser import parse, ParseError
+from .parser import parse, ParseErrors
 from .semantic import check, has_error
 from .ir import to_ir
 from .engine import Context, AssemblyError, assemble
@@ -73,8 +73,12 @@ def main(argv=None):
 
     try:
         ir, diags = compile_file(args.path)
-    except (LexError, ParseError) as e:
+    except LexError as e:
         print(e)
+        return 1
+    except ParseErrors as e:
+        for err in e.errors:     # 错误恢复：一次报出全部语法错误
+            print(err)
         return 1
     for d in diags:
         print(d)

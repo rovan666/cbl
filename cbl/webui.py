@@ -23,7 +23,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .lexer import tokenize, LexError
-from .parser import parse, ParseError
+from .parser import parse, ParseErrors
 from .semantic import check, has_error
 from .ir import to_ir
 from .engine import (AssemblyError, BLOCK_SEP, Context, MaterialMissing,
@@ -85,13 +85,19 @@ def _views(ir, ctx, parts, actions):
 def analyze(source, materials, budget=None, query=None):
     """一次完整的编译 + 组装。返回页面所需全部数据（均可 JSON 序列化）。
     stage：lex / syntax / semantic（编译失败停在哪一步）/ rejected（拒绝组装）/ ok。"""
-    res = {"stage": "ok", "error": None, "diags": [], "ir": None, "audit": None,
-           "blocks": [], "prompt": "", "report_text": "", "query": ""}
+    res = {"stage": "ok", "error": None, "errors": [], "diags": [], "ir": None,
+           "audit": None, "blocks": [], "prompt": "", "report_text": "", "query": ""}
     try:
         prog = parse(tokenize(source))
-    except (LexError, ParseError) as e:
-        res.update(stage="lex" if isinstance(e, LexError) else "syntax",
-                   error={"line": e.line, "message": str(e)})
+    except LexError as e:
+        res.update(stage="lex",
+                   error={"line": e.line, "col": e.col, "message": str(e)},
+                   errors=[{"line": e.line, "col": e.col, "message": str(e)}])
+        return res
+    except ParseErrors as e:
+        # 错误恢复报出全部语法错误；error 保留第一条，兼容只读单条的旧调用方
+        errs = [{"line": x.line, "col": x.col, "message": str(x)} for x in e.errors]
+        res.update(stage="syntax", error=errs[0], errors=errs)
         return res
     diags = check(prog)
     res["diags"] = [{"level": d.level, "line": d.line, "code": d.code, "message": d.msg,

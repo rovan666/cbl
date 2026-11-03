@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cbl.cli import compile_file
 from cbl.lexer import LexError
-from cbl.parser import ParseError
+from cbl.parser import ParseErrors
 from cbl.semantic import CATALOG, check, has_error
 from cbl.ast_nodes import Program, WindowDecl, BlockDecl, RuleDecl, Operand
 
@@ -62,8 +62,8 @@ def case_syntax_error():
     try:
         _compile_text("window 8000\nblock a { cap: 100 ; }")  # window 少分号
         raise AssertionError("缺少分号应报语法错误")
-    except ParseError as e:
-        assert "行" in str(e), "错误信息应带行号"
+    except ParseErrors as e:
+        assert "行" in str(e.errors[0]), "错误信息应带行号"
 
 
 def case_lex_error():
@@ -112,7 +112,7 @@ def case_enum_string_rejected():
     try:
         _compile_text('window 8000 ;\nblock a { source: "a.txt" ; cap: 100 ; priority: "high" ; }')
         raise AssertionError("priority 写成字符串应报语法错误")
-    except ParseError:
+    except ParseErrors:
         pass
 
 
@@ -125,17 +125,19 @@ def case_strings_cannot_impersonate_terminals():
         try:
             _compile_text(src)
             raise AssertionError(f"应报语法错误：{src!r}")
-        except ParseError as e:
+        except ParseErrors as e:
             assert "字符串" in str(e), f"报错应说明读到的是字符串：{e}"
 
 
 def case_missing_semicolon_line():
-    # 缺分号报在缺的那一行（上一个 Token 所在行），并注明实际读到的 Token 在哪一行
+    # 缺分号报在缺的那一行（上一个 Token 的结尾），并注明实际读到的 Token 的位置
     try:
         _compile_text("window 8000\nblock a { source: \"a.txt\" ; cap: 100 ; }")
         raise AssertionError("缺分号应报语法错误")
-    except ParseError as e:
-        assert e.line == 1 and str(e).startswith("语法错误 行1:") and "（行2）" in str(e), str(e)
+    except ParseErrors as e:
+        err = e.errors[0]
+        assert (err.line, err.col) == (1, 12), (err.line, err.col)
+        assert str(err).startswith("语法错误 行1 列12:") and "实际位于 行2" in str(err), str(err)
 
 
 def case_ir_source_kind():
@@ -168,6 +170,85 @@ def case_non_ascii_ident():
 def case_diag_format():
     _, diags = _compile_text('window 8000 ;\nblock a { source: chat_log ; cap: 100 ; }\n')
     assert repr(diags[0]).startswith("[错误] 行2 E601: "), repr(diags[0])
+
+
+# ---------- 相对 cap（cap 与断言右值共用 operand：整数 / 整数% / window*数字） ----------
+
+def case_cap_percent():
+    ir, diags = _compile_text('window 8000 ;\nblock a { source: "a.txt" ; cap: 40% ; }')
+    assert ir is not None, diags
+    assert ir["blocks"][0]["cap"] == 3200, "40% 应折算成 window×0.4=3200（IR 里是绝对值）"
+
+
+def case_cap_window_scale():
+    ir, diags = _compile_text('window 8000 ;\nblock a { source: "a.txt" ; cap: window * 0.25 ; }')
+    assert ir is not None, diags
+    assert ir["blocks"][0]["cap"] == 2000, ir["blocks"][0]
+
+
+def case_cap_relative_window_declared_later():
+    # window 写在 block 后面也要能折算（折算发生在整条程序解析完之后）
+    ir, diags = _compile_text('block a { source: "a.txt" ; cap: 40% ; }\nwindow 8000 ;')
+    assert ir is not None, diags
+    assert ir["blocks"][0]["cap"] == 3200 and ir["window"] == 8000
+
+
+def case_cap_relative_rounding_and_zero():
+    # 四舍五入：window 8001 的 40% = 3200.4 → 3200
+    ir, _ = _compile_text('window 8001 ;\nblock a { source: "a.txt" ; cap: 40% ; }')
+    assert ir["blocks"][0]["cap"] == 3200
+    # cap: 0% 折算成 0，由约束⑧ E802 拦下
+    ir, diags = _compile_text('window 8000 ;\nblock a { source: "a.txt" ; cap: 0% ; }')
+    assert ir is None and any(d.code == "E802" for d in diags), diags
+
+
+def case_cap_relative_still_checked_by_total():
+    # 相对额度折算后仍受约束①检查：60% + 60% = 9600 > 8000×0.9
+    src = ('window 8000 ;\n'
+           'block a { source: "a.txt" ; cap: 60% ; }\n'
+           'block b { source: "b.txt" ; cap: 60% ; }\n')
+    ir, diags = _compile_text(src)
+    assert ir is None and any(d.code == "E101" for d in diags), diags
+
+
+# ---------- 语法错误恢复（panic mode：一次编译报出尽量多的错误） ----------
+
+def case_parse_recovers_multiple_errors():
+    # 两个互不相干的错误（块 a 缺分号、块 b 的 cap 缺值）应一次都报出来
+    src = ('window 8000 ;\n'
+           'block a { source: "a.txt" ; cap: 100 }\n'
+           'block b { source: "b.txt" ; cap: ; }\n')
+    try:
+        _compile_text(src)
+        raise AssertionError("应报语法错误")
+    except ParseErrors as e:
+        assert len(e.errors) == 2, f"应报 2 处错误：{e.errors}"
+        assert [x.line for x in e.errors] == [2, 3], e.errors
+
+
+def case_parse_recovery_keeps_good_decls():
+    # 块 a 坏了不影响块 b 与规则正常解析；错误按位置带行列号
+    src = ('window 8000 ;\n'
+           'block a { source: "a.txt" ; cap: 100 }\n'   # 缺分号，报在行2
+           'block b { source: "b.txt" ; cap: 200 ; }\n'
+           'rule r { assert: total_reserved <= 50% ; on_violation: warn ; }\n')
+    try:
+        _compile_text(src)
+        raise AssertionError("应报语法错误")
+    except ParseErrors as e:
+        assert len(e.errors) == 1 and e.errors[0].line == 2, e.errors
+        assert e.errors[0].col, "语法错误应带列号"
+
+
+def case_parse_no_cascade_completeness():
+    # 只有 rule 没有 window/block：只报"缺少 window"和"至少需要 block"两条，
+    # 不再因恢复过程产出连带错误
+    try:
+        _compile_text('rule r { assert: total_reserved <= 50% ; on_violation: warn ; }')
+        raise AssertionError("应报语法错误")
+    except ParseErrors as e:
+        msgs = [str(x) for x in e.errors]
+        assert len(msgs) == 2 and "缺少 window" in msgs[0] and "至少需要" in msgs[1], msgs
 
 
 # ---------- 错误目录正例/反例（表驱动，与 semantic.CATALOG 一一对应） ----------

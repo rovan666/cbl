@@ -20,7 +20,8 @@ class BlockDecl:
     line: int
     source: str = ""          # 字符串字面量或内置来源标识符
     source_kind: str = ""     # "string" / "ident"，语义约束⑥据此区分
-    cap: int = 0              # 额度（token 数）
+    cap: int = 0              # 额度（token 数）；源码写相对额度（40% / window*0.4）
+                              # 时由 parser 在 window 已知后折算成这里的绝对值
     priority: str = "medium"  # must_keep / high / medium / low
     overflow: str = "truncate_tail"  # 五种超限策略之一
     keep_recent: int = None   # None 表示未声明（未启用）
