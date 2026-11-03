@@ -286,6 +286,83 @@ STRATEGIES = {"truncate_tail": truncate_tail, "sliding_window": sliding_window,
               "summarize": summarize, "rerank_drop": rerank_drop, "error": error}
 
 
+# ---------- IR 入口校验 ----------
+
+PLAN_PRIORITIES = ("must_keep", "high", "medium", "low")
+PLAN_METRICS = ("total_reserved", "every_block_min_tokens")
+
+
+def _is_num(v):
+    return type(v) in (int, float)      # 不用 isinstance：bool 是 int 的子类，要排除
+
+
+def validate_plan(plan: dict):
+    """引擎入口的 IR 校验。JSON 计划是编译器与运行期之间的契约，但引擎不假设
+    计划一定来自本编译器（网页演示、手写、第三方生成都有可能）——结构或取值
+    非法时抛出 ValueError 并列出全部问题，而不是在组装中途抛裸 KeyError。"""
+    if not isinstance(plan, dict):
+        raise ValueError("JSON 组装计划必须是对象（dict）")
+    problems = []
+
+    def bad(where, msg):
+        problems.append(f"{where}：{msg}")
+
+    w = plan.get("window")
+    if type(w) is not int or w <= 0:
+        bad("window", f"必须是正整数（实际为 {w!r}）")
+    m = plan.get("margin", 0.9)
+    if not _is_num(m) or not 0 < m <= 1:
+        bad("margin", f"应在 (0, 1] 区间内（实际为 {m!r}）")
+    blocks = plan.get("blocks")
+    if not isinstance(blocks, list) or not blocks:
+        bad("blocks", "必须是非空列表")
+        blocks = []
+    for b in blocks:
+        if not isinstance(b, dict):
+            bad("blocks", f"每个块必须是对象（实际为 {b!r}）")
+            continue
+        where = f"块 {b.get('name')!r}"
+        if not b.get("name"):
+            bad(where, "缺少名字")
+        if not b.get("source"):
+            bad(where, "缺少 source")
+        if b.get("source_kind") not in ("string", "ident"):
+            bad(where, f"source_kind 必须是 string / ident（实际为 {b.get('source_kind')!r}）")
+        if type(b.get("cap")) is not int or b["cap"] <= 0:
+            bad(where, f"cap 必须是正整数（实际为 {b.get('cap')!r}）")
+        if b.get("priority") not in PLAN_PRIORITIES:
+            bad(where, f"priority 必须是 {' / '.join(PLAN_PRIORITIES)} 之一"
+                       f"（实际为 {b.get('priority')!r}）")
+        if b.get("overflow") not in STRATEGIES:
+            bad(where, f"overflow 必须是 {' / '.join(STRATEGIES)} 之一"
+                       f"（实际为 {b.get('overflow')!r}）")
+        kr = b.get("keep_recent")
+        if kr is not None and (type(kr) is not int or kr <= 0):
+            bad(where, f"keep_recent 必须是正整数或不出现（实际为 {kr!r}）")
+    for r in plan.get("rules") or []:
+        if not isinstance(r, dict):
+            bad("rules", f"每条规则必须是对象（实际为 {r!r}）")
+            continue
+        where = f"规则 {r.get('name')!r}"
+        if r.get("metric") not in PLAN_METRICS:
+            bad(where, f"metric 必须是 {' / '.join(PLAN_METRICS)} 之一"
+                       f"（实际为 {r.get('metric')!r}）")
+        if r.get("op") not in ("<=", ">="):
+            bad(where, f"op 只支持 <= / >=（实际为 {r.get('op')!r}）")
+        op = r.get("operand")
+        ok = _is_num(op) and op > 0
+        if isinstance(op, dict):
+            ok = (len(op) == 1 and next(iter(op)) in ("percent", "window_scale")
+                  and _is_num(next(iter(op.values()))))
+        if not ok:
+            bad(where, 'operand 必须是正数或 {"percent"/"window_scale": 数}'
+                       f"（实际为 {op!r}）")
+        if r.get("on_violation") not in ("warn", "error"):
+            bad(where, f"on_violation 必须是 warn / error（实际为 {r.get('on_violation')!r}）")
+    if problems:
+        raise ValueError("JSON 组装计划不合法：\n- " + "\n- ".join(problems))
+
+
 # ---------- 相关度与摘要（可插拔的轻量实现） ----------
 
 def terms(text):
@@ -391,6 +468,7 @@ def assemble(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_
 def assemble_parts(plan: dict, ctx: Context, counter=estimate_tokens, summarizer=rule_summary):
     """同 assemble，但返回 ([(块名, 该块最终文本), ...], 审计记录)，按声明顺序；
     被舍弃或来源缺失的块文本为空串。网页演示据此逐块展示"AI 实际看到了什么"。"""
+    validate_plan(plan)
     window = plan["window"]
     budget = ctx.budget if ctx.budget is not None else int(window * plan["margin"])
     audit = {"window": window, "budget": budget, "query": ctx.query, "status": "ok",

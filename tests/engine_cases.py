@@ -12,7 +12,8 @@ import os
 
 from cbl.cli import compile_file
 from cbl.engine import (AssemblyError, Context, allocate, assemble, estimate_tokens,
-                        rerank_drop, rule_summary, sliding_window, summarize, truncate_tail)
+                        rerank_drop, rule_summary, sliding_window, summarize,
+                        truncate_tail, validate_plan)
 from cbl.report import render_text
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -76,6 +77,35 @@ def case_allocate_must_keep_over_budget():
         raise AssertionError("must_keep 总额超过可用额度应拒绝")
     except ValueError as e:
         assert "1800" in str(e) and "1700" in str(e), e
+
+
+def case_validate_plan_accepts_example():
+    validate_plan(_plan())      # 本编译器产出的 IR 必须过自己的入口校验
+
+
+def case_validate_plan_reports_all_problems():
+    # 绕过编译器的非法 IR：引擎应在入口一次列出全部问题，而不是组装中途抛 KeyError
+    plan = _plan()
+    plan["blocks"][0].update(overflow="drop_all", priority="urgent")
+    del plan["blocks"][1]["cap"]
+    plan["blocks"][2]["keep_recent"] = 0
+    try:
+        validate_plan(plan)
+        raise AssertionError("非法计划应被拒")
+    except ValueError as e:
+        msg = str(e)
+        for kw in ("overflow", "priority", "cap", "keep_recent"):
+            assert kw in msg, f"问题清单应提到 {kw}：{msg}"
+
+
+def case_validate_plan_rejects_bad_rule():
+    plan = _plan()
+    plan["rules"][0].update(metric="total_tokens", operand={"weird": 1})
+    try:
+        assemble(plan, Context.from_dir(MATERIALS))
+        raise AssertionError("非法规则应被拒")
+    except ValueError as e:
+        assert "metric" in str(e) and "operand" in str(e), e
 
 
 def case_truncate_tail():
