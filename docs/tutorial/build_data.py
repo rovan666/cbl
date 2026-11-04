@@ -118,6 +118,46 @@ def strategy_demo():
     return {"units": turns, "limit": limit, "results": out}
 
 
+# ---------- 源码浏览器：全项目文件预高亮（pygments 只是构建期依赖，产物是纯静态） ----------
+
+CODE_FILES = [
+    "cbl/tokens.py", "cbl/lexer.py", "cbl/parser.py", "cbl/ast_nodes.py",
+    "cbl/semantic.py", "cbl/ir.py", "cbl/engine.py", "cbl/report.py",
+    "cbl/cli.py", "cbl/webui.py",
+    "cbl/static/report.js", "cbl/static/report.css", "cbl/static/demo.html",
+    "tests/run_tests.py", "tests/engine_cases.py", "tests/webui_cases.py",
+    "examples/medical_assistant.cbl",
+]
+LANG_BY_EXT = {".py": "python", ".js": "javascript", ".css": "css",
+               ".html": "html", ".cbl": "text"}
+
+
+def build_code():
+    """把 CODE_FILES 读出来做语法高亮，写成 assets/code.js + assets/pygments.css。"""
+    from pygments import highlight
+    from pygments.formatters import HtmlFormatter
+    from pygments.lexers import get_lexer_by_name
+    fmt = HtmlFormatter(linenos="table", linenostart=1, cssclass="hl", wrapcode=True)
+    files = {}
+    for path in CODE_FILES:
+        fp = os.path.join(ROOT, path)
+        with io.open(fp, encoding="utf-8") as f:
+            code = f.read()
+        lexer = get_lexer_by_name(LANG_BY_EXT[os.path.splitext(path)[1]])
+        files[path] = {"html": highlight(code, lexer, fmt),
+                       "lines": code.count("\n") + 1}
+    with io.open(os.path.join(HERE, "assets", "code.js"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("// 本文件由 docs/tutorial/build_data.py 生成（全项目源码 + pygments 高亮），请勿手改。\n")
+        f.write("window.TUTORIAL_CODE = ")
+        f.write(json.dumps(files, ensure_ascii=False))
+        f.write(";\n")
+    with io.open(os.path.join(HERE, "assets", "pygments.css"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("/* pygments xcode 配色，由 build_data.py 生成 */\n")
+        f.write(HtmlFormatter(style="xcode").get_style_defs(".hl"))
+    total = sum(v["lines"] for v in files.values())
+    print(f"code.js: {len(files)} 个文件，共 {total} 行")
+
+
 def main():
     data = {}
     data["tokens_demo"] = [
@@ -153,6 +193,7 @@ def main():
         f.write(json.dumps(data, ensure_ascii=False, indent=1))
         f.write(";\n")
     print("written:", OUT, f"({os.path.getsize(OUT) // 1024} KB)")
+    build_code()
 
 
 if __name__ == "__main__":
