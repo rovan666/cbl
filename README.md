@@ -144,6 +144,7 @@ python -m cbl serve --lan      # 局域网模式：手机连同一 Wi-Fi 即可�
 排版好的 PDF 版（含核心代码摘录、示意图、术语表、命令速查、五分钟演示脚本）：[docs/审阅指南.pdf](docs/审阅指南.pdf)，由 `docs/make_guide_pdf.py` 从 Markdown 版生成。
 
 **互动教程**：[docs/tutorial/](docs/tutorial/)——8 课自学网站，含 Token 步进动画、AST 折叠树、
-诊断点击跳行、额度压缩滑块、策略对照与随机抽测。**打开方式：双击仓库根目录的 `启动互动教程.bat`**
-（或直接用浏览器打开 `docs/tutorial/index.html`；GitHub 网页上只能看源码，不会渲染页面）。
+诊断点击跳行、额度压缩滑块、策略对照与随机抽测。**在线版：<https://rovan666.github.io/cbl/tutorial/>**
+（GitHub Pages 自动发布，分享这个链接即可）；本地打开：双击仓库根目录的 `启动互动教程.bat`
+（或直接用浏览器打开 `docs/tutorial/index.html`）。
 所有演示数据由 `docs/tutorial/build_data.py` 用真实编译器生成，改了编译器行为后重跑该脚本即可同步。
