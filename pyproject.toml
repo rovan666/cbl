@@ -20,8 +20,12 @@ Repository = "https://github.com/rovan666/cbl"
 [project.scripts]
 cbl = "cbl.cli:main"
 
-[tool.setuptools.packages.find]
-include = ["cbl*"]
+[tool.setuptools]
+packages = ["cbl", "cbl.examples"]
+
+[tool.setuptools.package-dir]
+"cbl.examples" = "examples"     # 示例随包安装，`cbl serve` 不带路径时才有缺省示例可用
 
 [tool.setuptools.package-data]
 cbl = ["static/*"]
+"cbl.examples" = ["*.cbl", "materials/*", "materials/*/*"]

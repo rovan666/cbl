@@ -25,8 +25,16 @@ from .ir import to_ir
 from .engine import Context, AssemblyError, assemble
 from .report import render_text, render_json, render_html
 
-DEFAULT_EXAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                               "examples", "medical_assistant.cbl")
+
+def find_default_example(pkg_dir=os.path.dirname(os.path.abspath(__file__))):
+    """定位缺省示例：pip 安装后随包在 cbl/examples/，源码仓库里在上一级 examples/。"""
+    installed = os.path.join(pkg_dir, "examples", "medical_assistant.cbl")
+    if os.path.exists(installed):
+        return installed
+    return os.path.join(os.path.dirname(pkg_dir), "examples", "medical_assistant.cbl")
+
+
+DEFAULT_EXAMPLE = find_default_example()
 
 
 def compile_file(path: str):

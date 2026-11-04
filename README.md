@@ -72,7 +72,7 @@ python -m cbl check examples/medical_assistant.cbl   # 编译检查，输出 JSO
 python -m cbl run   examples/medical_assistant.cbl   # 编译 + 组装，打印审计报告
 python -m cbl run   examples/medical_assistant.cbl --budget 6000 --out prompt.txt --json audit.json --html audit.html
 python -m cbl serve                                  # 网页演示：预算实验台（见下节）
-python tests/run_tests.py                            # 跑自检（65 个用例）
+python tests/run_tests.py                            # 跑自检（67 个用例）
 ```
 
 cap 除了绝对值，也支持与窗口挂钩的相对写法（换窗口尺寸时不用重算各块额度）：
@@ -88,6 +88,14 @@ block retrieved_docs {
 
 相对额度在编译期按 window 折算成绝对 token 数（四舍五入），JSON 计划里仍是整数；
 折算后照常参与 ①~⑨ 全部语义检查（如总额超窗报 E101、折算为 0 报 E802）。
+
+也可以安装成命令（示例随包安装，`cbl serve` 不带路径时打开缺省示例）：
+
+```bash
+pip install .      # 在仓库根目录执行
+cbl run  路径/my.cbl --query "本轮提问"
+cbl serve
+```
 
 `run` 的输出示例（缺省可用额度 7200）：
 

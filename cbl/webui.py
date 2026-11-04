@@ -130,7 +130,7 @@ def make_handler(default_path, materials):
     with open(default_path, encoding="utf-8") as f:
         default_source = f.read()
     init = {"source": default_source, "file": os.path.basename(default_path),
-            "materials": os.path.relpath(materials), "query": Context.from_dir(materials).query}
+            "materials": _display_path(materials), "query": Context.from_dir(materials).query}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, data, ctype):
@@ -201,6 +201,14 @@ def make_handler(default_path, materials):
             pass
 
     return Handler
+
+
+def _display_path(path):
+    """页面展示用的路径：尽量相对当前目录；Windows 跨盘符无相对路径时退回绝对路径。"""
+    try:
+        return os.path.relpath(path)
+    except ValueError:
+        return os.path.abspath(path)
 
 
 def _lan_ip():

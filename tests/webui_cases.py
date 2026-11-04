@@ -9,9 +9,12 @@ import http.client
 import json
 import os
 import threading
+import tempfile
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
-from cbl.webui import analyze, make_handler, MAX_BODY
+from cbl.cli import find_default_example
+from cbl.webui import _display_path, analyze, make_handler, MAX_BODY
 from cbl.report import build_html
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -123,6 +126,24 @@ class _Server:
         status = conn.getresponse().status
         conn.close()
         return status
+
+
+def case_default_example_located():
+    """缺省示例：源码仓库布局与 pip 安装布局（随包在 cbl/examples/）都要找得到。"""
+    assert os.path.exists(find_default_example())
+    with tempfile.TemporaryDirectory() as tmp:
+        examples = os.path.join(tmp, "cbl", "examples")
+        os.makedirs(examples)
+        installed = os.path.join(examples, "medical_assistant.cbl")
+        open(installed, "w", encoding="utf-8").close()
+        assert find_default_example(os.path.join(tmp, "cbl")) == installed
+
+
+def case_display_path_cross_drive():
+    """Windows 跨盘符时 relpath 抛 ValueError：make_handler 不能因此崩溃，退回绝对路径。"""
+    with mock.patch("os.path.relpath", side_effect=ValueError("path is on mount 'D:'")):
+        assert _display_path(MATERIALS) == os.path.abspath(MATERIALS)
+        make_handler(EXAMPLE, MATERIALS)
 
 
 def case_server_endpoints():

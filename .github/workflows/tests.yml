@@ -18,3 +18,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: 运行自检（零第三方依赖，无需安装）
         run: python tests/run_tests.py
+      - name: 验证 pip 安装后缺省示例可用（离开仓库目录，确保导入的是安装版）
+        run: |
+          pip install .
+          cd "$RUNNER_TEMP"
+          python -c "import os; from cbl.cli import DEFAULT_EXAMPLE as p; from cbl.webui import make_handler; assert 'site-packages' in p, p; make_handler(p, os.path.join(os.path.dirname(p), 'materials')); print(p)"
