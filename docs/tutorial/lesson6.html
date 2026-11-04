@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 课 · 测试体系 — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="6" style="--c:#067647;--t:#e3f6ec">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson5.html">← 第 5 课</a><a href="quiz.html">下一课：综合考察 →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 6 课 · 约 30 分钟 · 对应代码 tests/</div>
+  <h1>测试体系：65 个用例怎么把守质量</h1>
+  <div class="sub">目标：讲清三层测试、正反例表驱动、快照测试、变异检查，以及 CI 怎么自动跑它们。</div>
+</div>
+
+<h2>6.1 三层测试</h2>
+<table>
+  <tr><th>层</th><th>内容</th><th>文件</th></tr>
+  <tr><td>前端</td><td>词法/语法错误的反例：行列号、期望符号、错误恢复一次报全</td><td><code>tests/run_tests.py</code> 前半</td></tr>
+  <tr><td>语义</td><td>错误目录 16 项逐项正反例 + 覆盖率自检</td><td><code>tests/run_tests.py</code> 的 PAIRS</td></tr>
+  <tr><td>端到端</td><td>真实示例 + 真实材料跑引擎，快照逐字比对</td><td><code>tests/engine_cases.py</code>、<code>webui_cases.py</code></td></tr>
+</table>
+<p>入口统一：<code>python tests/run_tests.py</code>，当前 <b>65 个用例</b>。CI（GitHub Actions）在每次 push/PR 时
+用 Python 3.10 和 3.12 各跑一遍。</p>
+
+<h2>6.2 正反例表驱动（语义层的测试设计）</h2>
+<p>错误目录里每个编号配一对：<b>正例</b>（必须编译通过且不含该编号）和<b>反例</b>（必须报出该编号）。
+16 个编号 = 16 对，写在一张 <code>PAIRS</code> 表里，测试脚本自动生成用例。</p>
+<div class="keypoint">
+  <span class="tag">闭环</span>
+  <p style="margin:0"><code>case_catalog_covered</code> 反向检查：<b>目录里的每一项都必须在 PAIRS 里有正反例</b>。
+  新增检查忘了写测试？测试自己先失败。这就是"测试测试"——防止质量机制本身退化。</p>
+</div>
+
+<h2>6.3 快照测试：冻结行为</h2>
+<p>引擎的裁剪行为（哪段被丢、摘要多少字）被完整存进 <code>tests/snapshots/</code>，每次测试逐字比对。
+任何人改了裁剪逻辑，测试立刻红——<b>行为变化必须经过人的确认</b>：</p>
+<pre class="code">CBL_UPDATE_SNAPSHOTS=1 python tests/run_tests.py   <span class="c"># 确认是预期变化后，接受新快照</span></pre>
+<table>
+  <tr><th></th><th>单元测试</th><th>快照测试</th></tr>
+  <tr><td>断言什么</td><td>具体性质（如"used ≤ effective"）</td><td>整个输出逐字不变</td></tr>
+  <tr><td>优点</td><td>失败时指向明确</td><td>任何意外变化都藏不住</td></tr>
+  <tr><td>代价</td><td>性质要想得全</td><td>预期内的变化也要人确认一次</td></tr>
+</table>
+
+<h2>6.4 变异检查：测试真的在把关吗</h2>
+<p>前几课你已经做过三次了：删 <code>_is</code> 的类型检查、删 <code>check_source</code>、改压缩次序——
+每次都预期测试失败。<b>如果改了代码测试还全绿，说明测试有洞</b>。这是审阅代码时最有价值的思路之一。</p>
+
+<h2>6.5 网页层的测试</h2>
+<ul>
+  <li><code>webui_cases.py</code> 会在<b>随机端口起真实 HTTP 服务</b>，逐个接口发真实请求；</li>
+  <li>越权路径（<code>/static/../cli.py</code>）必须 404；超大请求体只看请求头就返回 413；</li>
+  <li>XSS 测试：把 <code>&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;</code> 塞进提问，导出报告验证转义。</li>
+</ul>
+
+<h2>6.6 动手实验</h2>
+<div class="lab">
+  <span class="tag">实验 · 完整走一遍"改代码"流程</span>
+  <p>① 故意把 <code>report.py</code> 里"完整保留"改成"完整" → ② 跑测试，看 <code>case_snapshot_reports</code>
+  红掉并打印实际输出 → ③ 如果这是预期变化，<code>CBL_UPDATE_SNAPSHOTS=1</code> 接受 → ④ 再跑一遍全绿 →
+  ⑤ <code>git checkout .</code> 还原。<b>这就是本项目改代码的标准流程。</b></p>
+</div>
+
+<h2>6.7 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 快照测试和单元测试的关系是？</p>
+  <button class="opt">互相替代，有一个就行</button>
+  <button class="opt">互补：单元测试断言具体性质，快照冻结整个输出防止行为被悄悄改变</button>
+  <button class="opt">快照测试更高级，应该全换成快照</button>
+  <div class="fb">快照的代价是任何变化都要人确认——所以它只用于"审计报告"这种输出物，不用于内部函数。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">2. 新增一条语义检查后，忘了写正反例测试，会发生什么？</p>
+  <button class="opt">case_catalog_covered 失败——它要求目录每一项都有正反例</button>
+  <button class="opt">什么都不会发生</button>
+  <button class="opt">编译器启动不了</button>
+  <div class="fb">测试体系自己守卫自己的完备性，这是表驱动设计在测试侧的镜像。</div>
+</div>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

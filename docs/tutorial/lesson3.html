@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 课 · 语义检查与 IR — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="3" style="--c:#6941c6;--t:#efeafd">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson2.html">← 第 2 课</a><a href="lesson4.html">下一课：预算执行引擎 →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 3 课 · 约 60 分钟 · 对应代码 semantic.py + ir.py</div>
+  <h1>语义检查与 IR：意思通不通，和编译期的"交接单"</h1>
+  <div class="sub">目标：讲清九条约束各自防什么、表驱动怎么落地、属性文法体现在哪、为什么要有 JSON 中间表示。</div>
+</div>
+
+<h2>3.1 语法对了，意思就对了吗？</h2>
+<div class="analogy">
+  <span class="tag">生活类比</span>
+  <p style="margin:0">"我吃饭了桌子"语法结构没错（主谓宾齐全），但意思不通。同理：<code>cap: 7000</code> +
+  <code>cap: 7000</code> 两个块各自合法，但加起来超过 window 8000 × 0.9 = 7200——<b>这种错误必须等所有块读完，
+  在整棵 AST 上才能发现</b>。这就是语义检查存在的理由。</p>
+</div>
+
+<h2>3.2 九条约束一览</h2>
+<table>
+  <tr><th>约束</th><th>防什么</th><th>错误目录编号</th></tr>
+  <tr><td>① 预算总量</td><td>各块 cap 之和 ≤ window × margin</td><td>E101、E102</td></tr>
+  <tr><td>② 无解判定</td><td>must_keep 总额超窗 → 逻辑上无解，编译期就报</td><td>E201</td></tr>
+  <tr><td>③ 枚举合法性</td><td>priority / overflow / on_violation 取值合法（复核）</td><td>E301~E303</td></tr>
+  <tr><td>④ 命名唯一</td><td>block 与 rule 共用一张符号表，重名报错</td><td>E401</td></tr>
+  <tr><td>⑤ 参数适配</td><td>keep_recent 为正整数，且只配 summarize / sliding_window</td><td>W501、E502</td></tr>
+  <tr><td>⑥ 来源合法</td><td>内置来源只有三个；字符串一律放行当文件路径</td><td>E601</td></tr>
+  <tr><td>⑦ 断言合法</td><td>度量必须预定义；静态断言编译期直接求值</td><td>E701、R702</td></tr>
+  <tr><td>⑧ 必填项完整</td><td>source、cap 必须显式声明且为正</td><td>E801~E803</td></tr>
+  <tr><td>⑨ 保护一致</td><td>must_keep 的 overflow 只能是 error——死保不可裁剪</td><td>E901</td></tr>
+</table>
+
+<h2>3.3 互动演示：一份错误百出的程序，一次全报出来</h2>
+<p>下面这份程序有 4 处问题（分别违反⑨⑥⑤⑦）。左侧是源码，右侧是<b>真实语义检查器</b>的输出——
+点击任意诊断，左侧跳到对应行：</p>
+<div class="diaglink" data-kind="semantic"></div>
+<div class="keypoint">
+  <span class="tag">注意诊断格式</span>
+  <p style="margin:0"><code>[级别] 行号 编号: 说明</code>。编号首字母：E=错误、W=警告、R=规则违例（级别由规则的
+  on_violation 决定）。有错误级诊断 → 编译失败，不生成 IR。</p>
+</div>
+
+<h2>3.4 实现方式：错误目录 + 表驱动</h2>
+<p><code>semantic.py</code> 的设计就两句话：</p>
+<ul>
+  <li><b>错误目录 <code>CATALOG</code></b>（16 项）：枚举全部可静态发现的错误，每项一个编号和说明模板；</li>
+  <li><b>检查表 <code>CHECKS</code></b>：每个检查函数负责一条约束，产出目录中的诊断；主流程只有三行——全跑一遍、收集、按行号排序。</li>
+</ul>
+<p><b>新增一条约束只需三步</b>：目录加一行 → 写函数挂进 CHECKS → 测试里加一对正反例。
+漏写测试会被 <code>case_catalog_covered</code> 自动拦下（第 6 课细讲）。</p>
+
+<h2>3.5 属性文法体现在哪（答辩高频题）</h2>
+<div class="keypoint">
+  <span class="tag">核心概念</span>
+  <ul style="margin:0">
+    <li><b>综合属性（自底向上）</b>：<code>total_reserved</code> = 各块 cap 之和，从叶子（block）自底向上汇总到 Program。</li>
+    <li><b>继承属性（自顶向下）</b>：<code>window</code>、<code>margin</code> 从根节点向下传给各项检查使用。</li>
+    <li><b>约束</b> = 定义在这些属性上的谓词（①②⑦都建立在它们之上）。相对 cap 在语法阶段已折算成绝对值，语义层无感。</li>
+  </ul>
+</div>
+
+<h2>3.6 编译期断言 vs 运行期断言</h2>
+<p>两条度量、两种求值时机：</p>
+<table>
+  <tr><th>度量</th><th>含义</th><th>求值时机</th><th>为什么</th></tr>
+  <tr><td><code>total_reserved</code></td><td>Σcap</td><td><b>编译期</b>（semantic）</td><td>只依赖声明的 cap 和 window</td></tr>
+  <tr><td><code>every_block_min_tokens</code></td><td>压缩后各块有效额度的最小值</td><td><b>运行期</b>（engine）</td><td>取决于本次可用额度 B，编译期不知道</td></tr>
+</table>
+<p>两类断言失败都按规则自己的 <code>on_violation</code> 定级：error → 编译失败 / 拒绝组装；warn → 记警告不阻断。</p>
+
+<h2>3.7 IR：JSON 组装计划</h2>
+<p>通过语义检查的 AST，经 <code>ir.py</code> 一次遍历翻译成 JSON 计划（语法制导翻译：每类 AST 节点对应一个 JSON 对象）。
+<b>所有缺省值在这一步全部显式写出</b>，还附上了引擎求值需要的拆解字段（metric/op/operand），引擎不必再解析断言原文。</p>
+<details class="think">
+  <summary>思考题：为什么要 JSON 中间表示，不直接让引擎读 AST？</summary>
+  <p>① 编译器与引擎解耦，可以各自替换演化（引擎入口还有 validate_plan 校验这份契约，见第 4 课）；
+  ② JSON 可存档、可 diff、任何语言都能读；③ 教学上它就是"目标代码"，让编译器有明确的输出物。</p>
+</details>
+
+<h2>3.8 动手实验</h2>
+<div class="lab">
+  <span class="tag">实验 1 · 变异检查</span>
+  <p style="margin-bottom:0">把 <code>semantic.py</code> 的 <code>CHECKS</code> 里删掉 <code>check_source</code>，跑测试——
+  应有 3 个用例失败，其中 <code>pair_E601</code> 报"反例应报 E601"。<b>测试能抓住"检查被删"，说明它真的在把关。</b>
+  做完 <code>git checkout .</code> 还原。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 2 · 新增一条约束（重点练习）</span>
+  <p>按"三步法"新增 <b>W1001：cap 小于 64 给警告</b>：① <code>CATALOG</code> 加一行；
+  ② 写一个检查函数挂进 <code>CHECKS</code>；③ 在 <code>tests/run_tests.py</code> 的 <code>PAIRS</code> 里加一对正反例。
+  提示：故意先做①②不做③，看 <code>case_catalog_covered</code> 怎么提醒你。</p>
+  <p style="margin-bottom:0">走完这一圈，表驱动就长在手里了——这是本课最重要的一次动手。</p>
+</div>
+
+<h2>3.9 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 约束②（无解判定）和约束①（总量约束）都涉及求和，区别是什么？</p>
+  <button class="opt">没区别，重复检查</button>
+  <button class="opt">①是 Σcap ≤ window×margin（可压缩空间内的总量）；②只算 must_keep 的 Σcap ≤ window——死保块不参与压缩，它们超窗就是逻辑无解</button>
+  <button class="opt">②是运行期检查，①是编译期</button>
+  <div class="fb">②的语义是"这个预算永远不可能执行"，所以编译期直接报错而不是运行期失败。两条都在编译期。</div>
+</div>
+<div class="quiz" data-answer="2">
+  <p class="q">2. 约束③（枚举合法性）语法层已经拦住了，语义层为什么还要查一遍？</p>
+  <button class="opt">代码写重复了，其实没必要</button>
+  <button class="opt">因为语义检查比语法检查更准确</button>
+  <button class="opt">AST 可能被程序化构造（测试、网页、第三方生成器）绕过 parser，语义层复核是防御性检查</button>
+  <div class="fb">同一个防御思路也出现在引擎入口的 validate_plan——不信任上游，契约每道关都验。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">3. R702 的级别为什么有时是"错误"有时是"警告"？</p>
+  <button class="opt">规则自己的 on_violation 决定——规则机制让用户写出比内置约束更严或更松的纪律</button>
+  <button class="opt">取决于断言的数值大小</button>
+  <button class="opt">随机分配</button>
+  <div class="fb">CATALOG 里 R702 的级别字段是 None，造诊断时按规则的 on_violation 填入。</div>
+</div>
+<div class="quiz" data-answer="1">
+  <p class="q">4. IR 里为什么既有 assert 原文字符串，又拆了 metric/op/operand 三个字段？</p>
+  <button class="opt">冗余设计，可以删掉一半</button>
+  <button class="opt">原文供报告展示；拆解字段供引擎直接求值，免得引擎再解析一遍字符串</button>
+  <button class="opt">为了让 JSON 更长</button>
+  <div class="fb">一次解析、两处使用：人读原文，机器读结构。</div>
+</div>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

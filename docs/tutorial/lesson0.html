@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 0 课 · 全局图景 — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="0" style="--c:#1d2433;--t:#eef0f4">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson1.html">下一课：词法分析 →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 0 课 · 约 15 分钟 · 零基础起点</div>
+  <h1>全局图景：一条数据从头走到尾</h1>
+  <div class="sub">目标：学完能画出 CBL 的流水线图，说出每个阶段的产物是什么，并亲手把每条命令跑一遍。</div>
+</div>
+
+<h2>0.1 先建立直觉：CBL 在解决什么问题</h2>
+<div class="analogy">
+  <span class="tag">生活类比</span>
+  <p>CBL 做的事，一句话：<b>像给家庭开销做预算一样，给 AI 的上下文窗口做预算</b>。</p>
+  <table>
+    <tr><th>家庭预算</th><th>CBL</th></tr>
+    <tr><td>每月可支配收入 8000 元</td><td>窗口 <code>window 8000</code>（8000 token）</td></tr>
+    <tr><td>开销类别：房租、伙食、交通……</td><td>预算块 <code>block</code>（系统提示、检索文档、对话历史……）</td></tr>
+    <tr><td>每类的预算上限</td><td><code>cap</code>（额度）</td></tr>
+    <tr><td>房租动不得、娱乐可以砍</td><td><code>priority</code>（must_keep / high / medium / low）</td></tr>
+    <tr><td>超支了怎么办</td><td><code>overflow</code> 策略（截断 / 丢段 / 摘要 / 滑窗 / 报错）</td></tr>
+    <tr><td>月底对账单</td><td>审计报告</td></tr>
+  </table>
+  <p style="margin-bottom:0">后面每一课的设计决定，都可以往这张表里套——套得上，你就真的懂了。</p>
+</div>
+
+<h2>0.2 流水线：六个阶段</h2>
+<p>CBL 系统按编译原理的经典流水线组织。<b>每个阶段的产物，就是下一个阶段的输入</b>——这句话是整个课程的骨架：</p>
+<pre class="code">.cbl 源文件 ──词法──▶ Token 列表 ──语法──▶ AST ──语义──▶ 诊断列表
+      （lexer.py）        （parser.py）      （semantic.py）│ 全部通过
+                                                            ▼
+                                            JSON 组装计划（ir.py 生成）
+                                                            │
+            上下文材料 + 本轮提问 + 可用额度 B ──引擎（engine.py）┘
+                                                            │
+                          最终 Prompt + 审计记录 ──报告（report.py / webui.py）</pre>
+
+<div class="keypoint">
+  <span class="tag">关键划分</span>
+  <p style="margin:0">上半段是<b>编译期</b>：只看你声明的数字与结构，不碰真实材料；
+  下半段是<b>运行期</b>：拿真实材料执行预算。这就是为什么换个材料不用重新"编译"，
+  而改了 cap 必须重新编译。</p>
+</div>
+
+<h2>0.3 每层的产物到底长什么样</h2>
+<table>
+  <tr><th>阶段</th><th>产物</th><th>数据结构</th><th>通俗理解</th></tr>
+  <tr><td>词法</td><td>Token 列表</td><td><code>Token(kind, value, line, col)</code></td><td>源码的"单词表"</td></tr>
+  <tr><td>语法</td><td>AST</td><td><code>Program{window, blocks[], rules[]}</code></td><td>源码的"句子结构树"</td></tr>
+  <tr><td>语义</td><td>诊断列表</td><td><code>Diagnostic(level, line, msg, code)</code></td><td>"意思通不通"的检查单</td></tr>
+  <tr><td>IR</td><td>JSON 计划</td><td>普通 dict</td><td>编译期给运行期的"交接单"</td></tr>
+  <tr><td>引擎</td><td>Prompt + 审计</td><td>str + dict</td><td>真正干活的产出</td></tr>
+</table>
+
+<h2>0.4 动手：把六个阶段各跑一遍</h2>
+<div class="lab">
+  <span class="tag">动手实验（必做）</span>
+  <p>打开终端，<code>cd D:\学习用的\编译原理\DSL\cbl</code>，依次：</p>
+  <p><b>① 看源文件</b>——这就是"语言"本身：</p>
+  <pre class="code">type examples\medical_assistant.cbl</pre>
+  <p><b>② 看编译产物</b>（编译期的终点）：</p>
+  <pre class="code">python -m cbl check examples/medical_assistant.cbl</pre>
+  <p>注意两个现象，先记住，第 2、3 课解释：<br>
+  · <code>chat_history</code> 的 <code>source_kind</code> 是 <code>"ident"</code>（而其它块是 <code>"string"</code>）<br>
+  · 没写 <code>overflow</code> 的块，计划里被补上了缺省值</p>
+  <p><b>③ 看运行结果</b>（运行期的终点），跑两次对比：</p>
+  <pre class="code">python -m cbl run examples/medical_assistant.cbl
+python -m cbl run examples/medical_assistant.cbl --budget 6000</pre>
+  <p>第二次额度少了 1100：<code>tool_output</code> 被整块舍弃、<code>chat_history</code> 被压缩——
+  <b>源文件一个字没改，只是运行参数变了</b>。这就是"一次声明、两处生效"。</p>
+  <p><b>④ 打开预算实验台</b>（第 4 课的主练场）：</p>
+  <pre class="code">python -m cbl serve</pre>
+  <p style="margin-bottom:0">拖动"可用额度"滑块，看五个块此消彼长；地址后加 <code>?budget=6000</code> 直达某个场景。</p>
+</div>
+
+<h2>0.5 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 把过敏史材料文件改长了一些，需要重新编译 .cbl 源文件吗？</p>
+  <button class="opt">需要，因为材料变长会影响 JSON 计划</button>
+  <button class="opt">不需要，材料是运行期输入；编译期只看声明的 cap 数字</button>
+  <button class="opt">需要，因为审计报告会变</button>
+  <div class="fb">编译期的产物（JSON 计划）只包含声明的结构与数字；材料长度是运行期才知道的，由引擎按预算策略处理。</div>
+</div>
+<div class="quiz" data-answer="2">
+  <p class="q">2. 为什么语义检查放在语法分析之后、IR 生成之前？</p>
+  <button class="opt">只是习惯顺序，换一下也行</button>
+  <button class="opt">因为语义检查需要 IR 才能运行</button>
+  <button class="opt">语义检查建立在 AST 的结构正确之上（语法保证"句子结构对"）；IR 是"检查通过"的凭证，检查不通过就不该生成</button>
+  <div class="fb">分层各司其职：词法管"单词对不对"，语法管"句子结构对不对"，语义管"意思通不通"，IR 只给通过检查的程序生成。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">3. "编译期"和"运行期"的分界线在哪两个阶段之间？</p>
+  <button class="opt">IR 生成 与 引擎执行之间（JSON 计划是交接单）</button>
+  <button class="opt">词法 与 语法之间</button>
+  <button class="opt">引擎 与 报告之间</button>
+  <div class="fb">JSON 计划之前全是编译期（静态、不碰材料），之后是运行期（拿真实材料执行）。</div>
+</div>
+
+<details class="think">
+  <summary>思考题：如果让你给 CBL 加一种新块（比如"知识图谱查询结果"），从声明到出现在最终 Prompt，要经过哪些阶段？</summary>
+  <p>词法（不用改，名字走标识符规则）→ 语法（不用改，就是普通 block）→ 语义（自动被九条约束检查）→
+  IR（自动多一个块条目）→ 引擎（按 priority/overflow 参与分配与裁剪）→ 报告（自动出现在审计里）。
+  <b>一个新块零改动穿越全流水线</b>——这就是声明式语言的力量，也是第 3 课"表驱动"的回报。</p>
+</details>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 课 · 预算执行引擎 — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="4" style="--c:#b54708;--t:#fdf0e1">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson3.html">← 第 3 课</a><a href="lesson5.html">下一课：报告与网页 →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 4 课 · 约 60 分钟 · 对应代码 engine.py</div>
+  <h1>预算执行引擎：额度怎么分，超额怎么裁</h1>
+  <div class="sub">目标：手推 allocate 的逐级压缩与最大余数法，讲清五种策略各自的适用场景，理解运行期断言与拒绝组装。</div>
+</div>
+
+<h2>4.1 三步走</h2>
+<p>引擎（<code>assemble_parts</code>）就是计划书运行期语义的直接实现：</p>
+<table>
+  <tr><th>步骤</th><th>做什么</th><th>对应函数</th></tr>
+  <tr><td>1. 定 B</td><td>本次可用额度：缺省 window × margin，调用方可调小</td><td><code>assemble_parts</code> 开头</td></tr>
+  <tr><td>2. 分额度</td><td>Σcap 超 B 时按 low → medium → high 逐级压缩；must_keep 不参与</td><td><code>allocate</code> + <code>_proportional</code></td></tr>
+  <tr><td>3. 裁内容</td><td>读材料、估用量，超出有效额度的块执行声明的 overflow 策略</td><td><code>STRATEGIES[...]</code> 策略表</td></tr>
+</table>
+<p>最后按声明顺序拼接（ⓓ），求值运行期断言。任何一步不行就走 <code>reject()</code>——
+<b>拒绝组装也带审计记录</b>，报告能说清死在哪一步。</p>
+
+<h2>4.2 互动演示：拖滑块，看逐级压缩</h2>
+<p>这是引擎核心算法的教学复刻（与 <code>engine.py</code> 的 <code>allocate()</code> 同一算法）。拖动滑块改变可用额度 B，
+观察 <b>low 先被压、压到 0 才动 medium、high 和 must_keep 雷打不动</b>：</p>
+<div class="eng" data-kind="alloc"></div>
+<div class="keypoint">
+  <span class="tag">两个临界点</span>
+  <ul style="margin:0">
+    <li><b>B = 7100</b>（cap 总和）：以上足额分配，以下开始压缩；</li>
+    <li><b>B = 1800</b>（must_keep 总额）：以下无解，<b>拒绝组装</b>——宁可什么都不送，也不丢过敏史。</li>
+  </ul>
+</div>
+
+<h3>最大余数法：同级压缩怎么取整</h3>
+<p>同级按 cap 等比例压缩会出现小数。先取整数部分，剩余名额按小数部分从大到小补——保证总和<b>恰好</b>等于目标值。
+例：3 块各 100 分 200 → 66.7×3 → 取整 66×3=198，余 2 补给小数部分最大的两块 → 67、67、66。</p>
+
+<h2>4.3 五种超限策略对照</h2>
+<p>同一份材料（6 轮对话，上限 120 token），四种非 error 策略各自的真实产出：</p>
+<div class="strat"></div>
+<table>
+  <tr><th>策略</th><th>适合什么材料</th><th>思路</th></tr>
+  <tr><td><code>truncate_tail</code></td><td>工具输出等"前面重要"的文本</td><td>截断尾部，尽量停在句末（_soft_cut）</td></tr>
+  <tr><td><code>rerank_drop</code></td><td>检索文档</td><td>以本轮提问做 BM25 打分，整段丢弃相关度最低的，保持原顺序</td></tr>
+  <tr><td><code>summarize</code></td><td>对话历史</td><td>最近 keep_recent 轮留原文，早期压成摘要放前面；放不下就退化为滑窗</td></tr>
+  <tr><td><code>sliding_window</code></td><td>只要最近的</td><td>从最新往前整单位保留；一个都放不下时保留最新的末尾</td></tr>
+  <tr><td><code>error</code></td><td>must_keep（系统提示、过敏史）</td><td>超额即拒绝组装——绝不静默裁剪</td></tr>
+</table>
+
+<h2>4.4 token 估算：宁多勿少 + 单调性</h2>
+<div class="keypoint">
+  <span class="tag">设计决定</span>
+  <p>缺省计数器是保守估算（中文每字 1.5、英文每 3 字符 1 个）：<b>估多了只是少放一点，估少了会真的超窗</b>。
+  它还对任意前缀单调不减——所以截断能二分查找"最长放得下的前缀"。需要精确时传
+  <code>counter=tiktoken</code>（可插拔，示例见 <code>examples/plugin_demo.py</code>）。</p>
+</div>
+
+<h2>4.5 validate_plan：引擎不信任上游</h2>
+<p>JSON 计划是编译器与运行期之间的契约，但引擎<b>不假设它一定来自本编译器</b>（网页演示、手写、第三方生成都有可能）。
+<code>validate_plan()</code> 在组装前检查结构与取值（必填键、枚举、类型），非法计划一次列出全部问题——
+和语义层复核约束③是同一个防御思路。</p>
+
+<h2>4.6 动手实验</h2>
+<div class="lab">
+  <span class="tag">实验 1 · 三个经典场景</span>
+  <pre class="code">python -m cbl run examples/medical_assistant.cbl
+python -m cbl run examples/medical_assistant.cbl --budget 6000
+python -m cbl run examples/medical_assistant.cbl --budget 1700</pre>
+  <p style="margin-bottom:0">对照本课 4.2 的滑块结果，验证网页教学和真实引擎行为一致。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 2 · 换计数器</span>
+  <pre class="code">python
+&gt;&gt;&gt; from cbl.cli import compile_file
+&gt;&gt;&gt; from cbl.engine import Context, assemble
+&gt;&gt;&gt; ir, _ = compile_file("examples/medical_assistant.cbl")
+&gt;&gt;&gt; _, a = assemble(ir, Context.from_dir("examples/materials"), counter=len)</pre>
+  <p style="margin-bottom:0">用字符数当 token 数，看哪些块的裁剪决策变了——体会"计数器不同，决策就不同"。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 3 · 变异检查</span>
+  <p style="margin-bottom:0">把压缩次序 <code>("low", "medium", "high")</code> 改成 <code>("high", "medium", "low")</code>，
+  跑测试——应有 5 个用例失败（单元、端到端、快照、网页、HTTP 各层都拦住了）。<code>git checkout .</code> 还原。</p>
+</div>
+
+<h2>4.7 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 未用满的额度为什么不回流给别的块？</p>
+  <button class="opt">实现上做不到</button>
+  <button class="opt">可预测、可审计：每块拿多少只取决于声明，不取决于别的块这次材料多不多；代价是可能浪费，由用户调 cap 解决</button>
+  <button class="opt">因为 JSON 不支持</button>
+  <div class="fb">答辩高频题。主动承认代价，再讲设计理由，比硬撑"没代价"更专业。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">2. 为什么 low 压到 0 才压 medium，而不是所有块按比例一起压？</p>
+  <button class="opt">优先级的语义就是严格先后；按比例压会让高优先级也受损。担心低优先级饿死就写 no_starvation 规则兜底</button>
+  <button class="opt">逐级压缩实现更简单</button>
+  <button class="opt">只是巧合</button>
+  <div class="fb">B=6000 时 no_starvation 真的会报警告——示例就是这么设计的。</div>
+</div>
+<div class="quiz" data-answer="2">
+  <p class="q">3. token 估算故意偏多的理由是什么？</p>
+  <button class="opt">为了显得预算用得满</button>
+  <button class="opt">因为中文难算</button>
+  <button class="opt">保证"引擎认为放得下，真实分词器下也放得下"；需要精确就传 counter 换真实分词器</button>
+  <div class="fb">保守方向的选择题：估多→少放（无害），估少→真超窗（有害）。</div>
+</div>
+<div class="quiz" data-answer="1">
+  <p class="q">4. must_keep 块的实际用量超过 cap 会怎样？</p>
+  <button class="opt">自动换 truncate_tail 截断</button>
+  <button class="opt">拒绝组装并报错——约束⑨保证其策略必为 error，绝不静默裁剪</button>
+  <button class="opt">给警告但继续</button>
+  <div class="fb">这是整个语言的核心承诺：死保信息永远不会被悄悄丢掉。</div>
+</div>
+
+<details class="think">
+  <summary>思考题：rerank_drop 的已知局限是什么？</summary>
+  <p>字面匹配认不出同义词：提问说"发烧"、资料写"发热"就对不上（示例里"咽拭子检测"段就被误丢）。
+  改进方向：同义词表或向量检索——策略表是可插拔的，新增策略不改主流程。</p>
+</details>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

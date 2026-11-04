@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 课 · 报告与网页演示 — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="5" style="--c:#067647;--t:#e3f6ec">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson4.html">← 第 4 课</a><a href="lesson6.html">下一课：测试体系 →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 5 课 · 约 40 分钟 · 对应代码 report.py + webui.py + static/</div>
+  <h1>报告与网页演示：审计记录的三个视图</h1>
+  <div class="sub">目标：讲清"JSON 主格式 + 多视图"的架构、共用渲染器、XSS 两道关、实验台的安全设计。</div>
+</div>
+
+<h2>5.1 架构：一份数据，三种视图</h2>
+<p>引擎产出的<b>审计记录（audit dict）是主格式</b>，三种视图都只是它的渲染：</p>
+<table>
+  <tr><th>视图</th><th>用途</th><th>实现</th></tr>
+  <tr><td>JSON</td><td>存档、机器处理、diff</td><td><code>render_json</code>（就是 <code>json.dumps</code>）</td></tr>
+  <tr><td>纯文本</td><td>课堂演示、终端直读</td><td><code>render_text</code>（格式与计划书第 5 节一致）</td></tr>
+  <tr><td>独立 HTML</td><td>正式报告、离线可存档可打印</td><td><code>build_html</code>：样式+渲染器+数据全部内嵌单文件</td></tr>
+</table>
+<div class="keypoint">
+  <span class="tag">关键设计</span>
+  <p style="margin:0">网页实验台和 HTML 报告<b>共用同一个 JS 渲染器</b>（<code>static/report.js</code>）——
+  两边视觉永远一致，只维护一份代码。这就是为什么 HTML 报告需要启用 JavaScript 才能显示
+  （原始数据仍在页面源码的 <code>cbl-data</code> 里）。</p>
+</div>
+
+<h2>5.2 网页实验台（webui.py）</h2>
+<p>纯标准库 HTTP 服务（零依赖），五个接口：</p>
+<table>
+  <tr><th>接口</th><th>干什么</th></tr>
+  <tr><td><code>GET /</code></td><td>页面（demo.html）</td></tr>
+  <tr><td><code>GET /static/*</code></td><td>共用渲染器与样式</td></tr>
+  <tr><td><code>GET /api/init</code></td><td>初始源码、提问、材料目录</td></tr>
+  <tr><td><code>POST /api/analyze</code></td><td>编译 + 组装 → 页面要的全部数据（诊断、逐块视图、审计、Prompt）</td></tr>
+  <tr><td><code>POST /api/report</code></td><td>同上参数 → 独立 HTML 审计报告（下载）</td></tr>
+</table>
+<p>核心函数是 <code>analyze()</code>：一次调用跑完整条流水线，返回<b>全部可 JSON 序列化</b>的结果，
+包括每段/每轮材料的状态（保留 / 部分保留 / 并入摘要 / 丢弃）——这就是"AI 实际看到了什么"的数据来源。</p>
+
+<h2>5.3 安全设计（局域网演示的底气）</h2>
+<ul>
+  <li><b>路径沙箱</b>：网页允许编辑源码，<code>source</code> 字符串被限制在材料目录内——写 <code>"../../任意文件"</code> 会被拒绝读取（有专门测试 <code>case_webui_source_sandbox</code>）。</li>
+  <li><b>请求体上限 256KB</b>：只看请求头就拒绝，不读包体。</li>
+  <li><b>缺省只监听 127.0.0.1</b>；<code>--lan</code> 才开放局域网（手机演示用）。</li>
+  <li><b>XSS 两道关</b>：渲染器只用 DOM API + <code>textContent</code>，从不拼 HTML 字符串；内嵌 JSON 把 <code>&lt; &gt; &amp;</code> 转成 <code>\u</code> 形式，材料里即使有 <code>&lt;/script&gt;</code> 也截断不了脚本。</li>
+</ul>
+
+<h2>5.4 单位状态判定（曾经的 bug）</h2>
+<p>"每段材料到底保留了没有"怎么判定？看原文是否出现在最终文本里：完整出现 → 保留；只出现首尾片段 → 部分保留；
+位于保留原文之前且有摘要 → 并入摘要；否则 → 丢弃。</p>
+<div class="warn">
+  <span class="tag">曾经的 bug</span>
+  <p style="margin:0">摘要会引用早期轮次的首句，导致这些轮次被误判为"部分保留"，页面显示"保留 7/8 轮"而实际只保留了 4 轮。
+  修法：<b>"并入摘要"的判断必须先于"部分保留"</b>，并加了回归测试。——启发式判定的顺序就是语义。</p>
+</div>
+
+<h2>5.5 动手实验</h2>
+<div class="lab">
+  <span class="tag">实验 1 · 三种视图各来一份</span>
+  <pre class="code">python -m cbl run examples/medical_assistant.cbl --out prompt.txt --json audit.json --html audit.html</pre>
+  <p style="margin-bottom:0">打开 audit.html 与实验台对比——同一个渲染器，视觉完全一致。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 2 · XSS 实测</span>
+  <p style="margin-bottom:0">在实验台"本轮用户提问"里输入 <code>&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;</code>，
+  导出报告再打开——不会弹窗，提问原样显示。然后跑 <code>case_html_report_embed_safe</code> 看测试怎么守这一关。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 3 · 路径沙箱</span>
+  <p style="margin-bottom:0">在实验台把某块 source 改成 <code>"../../README.md"</code>，看该块显示"来源缺失"且内容读不出来。</p>
+</div>
+
+<h2>5.6 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 为什么 HTML 报告用 JS 渲染而不是 Python 直接拼好 HTML？</p>
+  <button class="opt">因为 Python 不擅长字符串</button>
+  <button class="opt">网页本来就需要 JS 渲染做交互；报告复用同一个渲染器就不用维护两份视觉代码</button>
+  <button class="opt">为了加载更快</button>
+  <div class="fb">代价是报告需要启用 JS——原始数据仍在页面源码里兜底。</div>
+</div>
+<div class="quiz" data-answer="2">
+  <p class="q">2. 防 XSS 的两道关是什么？</p>
+  <button class="opt">防火墙 + 杀毒软件</button>
+  <button class="opt">登录鉴权 + HTTPS</button>
+  <button class="opt">渲染只用 textContent（不拼 HTML 字符串）+ 内嵌 JSON 转义 &lt; &gt; &amp;</button>
+  <div class="fb">材料内容是不可信输入，两道关分别守住"渲染"和"数据嵌入"两个注入点。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">3. 演示服务为什么缺省只监听 127.0.0.1？</p>
+  <button class="opt">它没有鉴权，监听局域网意味着同 Wi-Fi 的人都能访问和编辑源码；沙箱限制了危害，但最小暴露面是默认原则</button>
+  <button class="opt">因为 127.0.0.1 速度更快</button>
+  <button class="opt">因为端口 8000 被占</button>
+  <div class="fb">--lan 是给手机演示用的显式开关——功能与安全的取舍要做成显式选择，不是默认开放。</div>
+</div>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

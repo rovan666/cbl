@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CBL 互动教程 · 从零掌握上下文预算语言</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="progress-pill"></span>
+</header>
+<main>
+<div class="hero" style="--c:#1d2433">
+  <div class="k">CBL · CONTEXT BUDGET LANGUAGE</div>
+  <h1>从零到完全掌握</h1>
+  <div class="sub">8 课互动教程：每一课都能动手点、动手跑、当场自测。所有演示数据由真实编译器生成。</div>
+  <div class="meta">使用方法：按顺序学，每课做完「动手实验」再点底部的「我学完了这一课」；全部完成后进第 7 课综合考察。</div>
+</div>
+
+<div class="keypoint">
+  <span class="tag">先弄明白</span>
+  <p style="margin:0">「完全掌握」= 四层：<b>会用</b>（空手写出新场景的 .cbl）、<b>会讲</b>（任意一行代码能说出为什么）、
+  <b>会改</b>（新需求 20 分钟改完且测试全绿）、<b>会答</b>（答辩追问接得住）。本教程的每个环节都在为这四层服务。</div>
+</div>
+
+<div class="cards">
+  <a class="card" data-lid="0" href="lesson0.html" style="--c:#1d2433">
+    <span class="st">☐</span><div class="k">第 0 课 · 15 分钟</div>
+    <h3>全局图景</h3><p>预算类比、六阶段流水线、亲手把每条命令跑一遍。零基础从这里开始。</p>
+  </a>
+  <a class="card" data-lid="1" href="lesson1.html" style="--c:#175cd3">
+    <span class="st">☐</span><div class="k">第 1 课 · 45 分钟</div>
+    <h3>词法分析</h3><p>字符怎么切成 Token：步进动画逐 Token 播放、最长匹配、关键字识别。</p>
+  </a>
+  <a class="card" data-lid="2" href="lesson2.html" style="--c:#175cd3">
+    <span class="st">☐</span><div class="k">第 2 课 · 60 分钟</div>
+    <h3>语法分析</h3><p>递归下降、LL(1)、AST 可折叠树、相对 cap、恐慌模式错误恢复。</p>
+  </a>
+  <a class="card" data-lid="3" href="lesson3.html" style="--c:#6941c6">
+    <span class="st">☐</span><div class="k">第 3 课 · 60 分钟</div>
+    <h3>语义检查与 IR</h3><p>九条约束、错误目录表驱动、属性文法、JSON 组装计划。</p>
+  </a>
+  <a class="card" data-lid="4" href="lesson4.html" style="--c:#b54708">
+    <span class="st">☐</span><div class="k">第 4 课 · 60 分钟</div>
+    <h3>预算执行引擎</h3><p>额度滑块实时压缩、最大余数法、五种超限策略对照、运行期断言。</p>
+  </a>
+  <a class="card" data-lid="5" href="lesson5.html" style="--c:#067647">
+    <span class="st">☐</span><div class="k">第 5 课 · 40 分钟</div>
+    <h3>报告与网页演示</h3><p>审计记录三种视图、共用渲染器、XSS 两道关、预算实验台。</p>
+  </a>
+  <a class="card" data-lid="6" href="lesson6.html" style="--c:#067647">
+    <span class="st">☐</span><div class="k">第 6 课 · 30 分钟</div>
+    <h3>测试体系</h3><p>正反例表驱动、快照测试、变异检查——质量是怎么被把守的。</p>
+  </a>
+  <a class="card" data-lid="7" href="quiz.html" style="--c:#b42318">
+    <span class="st">☐</span><div class="k">第 7 课 · 考察</div>
+    <h3>综合抽测</h3><p>从题库随机抽题，当场判分解析。满分 = 可以上答辩场。</p>
+  </a>
+</div>
+
+<h2>配套实练工具</h2>
+<p>本教程之外，还有两个"真家伙"用来练手（在 <code>cbl/</code> 目录下启动）：</p>
+<table>
+  <tr><th>工具</th><th>命令</th><th>练什么</th></tr>
+  <tr><td>预算实验台（网页）</td><td><code>python -m cbl serve</code></td>
+      <td>拖额度滑块看实时压缩、改源码看诊断、导出审计报告——第 0/4 课的实练场</td></tr>
+  <tr><td>命令行</td><td><code>python -m cbl check / run</code></td>
+      <td>看 JSON 计划与文本审计报告原文</td></tr>
+</table>
+
+<h2>学习建议</h2>
+<ul>
+  <li><b>顺序</b>：0 → 1 → 2 → … 每课都假设你学过前面的。</li>
+  <li><b>动手大于阅读</b>：绿色「动手实验」卡片一个都不要跳过；看十遍不如做一遍。</li>
+  <li><b>交叉互讲</b>（4 人小组）：学完自己负责的课后，去给队友讲一遍别人的课——讲不清的地方就是没掌握的地方。</li>
+  <li><b>复习</b>：每课末尾的自测题和第 7 课的抽测可以反复刷，进度存在浏览器本地。</li>
+</ul>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

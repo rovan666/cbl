@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 课 · 语法分析 — CBL 互动教程</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-lesson="2" style="--c:#175cd3;--t:#e6effd">
+<header class="topbar">
+  <a class="home" href="index.html">CBL 互动教程</a>
+  <span class="spacer"></span>
+  <span class="prevnext"><a href="lesson1.html">← 第 1 课</a><a href="lesson3.html">下一课：语义检查与 IR →</a></span>
+</header>
+<main>
+<div class="hero">
+  <div class="k">第 2 课 · 约 60 分钟 · 对应代码 parser.py + ast_nodes.py</div>
+  <h1>语法分析：把 Token 组装成 AST</h1>
+  <div class="sub">目标：能手推每条产生式对应的函数调用链，讲清 LL(1)、缺省值填入、相对 cap 折算、恐慌模式错误恢复。</div>
+</div>
+
+<h2>2.1 语法分析在干什么</h2>
+<div class="analogy">
+  <span class="tag">生活类比</span>
+  <p style="margin:0">词法分析分出了"词"，语法分析要理解"句子结构"：<code>block notes { ... }</code> 里，
+  <code>notes</code> 是块名、花括号里是条目——就像"主语 + 谓语 + 宾语"。输出是一棵<b>抽象语法树（AST）</b>：
+  程序的结构化表示，后续所有阶段都在这棵树上工作。</p>
+</div>
+<p>CBL 的完整文法（EBNF）写在 <code>parser.py</code> 文件开头的注释里，总共十条左右产生式。最核心的四条：</p>
+<pre class="code">program    = { windowDecl | blockDecl | ruleDecl } ;
+blockDecl  = "block" ident "{" { blockItem } "}" ;
+capItem    = "cap" ":" operand ";" ;        <span class="c">(* 与断言右值共用 operand *)</span>
+operand    = int | int "%" | "window" "*" number ;</pre>
+
+<h2>2.2 递归下降：一条产生式 = 一个函数</h2>
+<p>实现方式是<b>手写递归下降</b>：<code>parse_program</code> 调用 <code>parse_block</code>，
+<code>parse_block</code> 调用 <code>parse_operand</code>……函数之间的调用关系就是文法的结构。三个基础工具函数撑起一切：</p>
+<table>
+  <tr><th>函数</th><th>作用</th><th>一句话</th></tr>
+  <tr><td><code>peek()</code></td><td>看当前 Token，不消费</td><td>"下一个是什么？"</td></tr>
+  <tr><td><code>advance()</code></td><td>吃掉当前 Token</td><td>"确认了，吞掉"</td></tr>
+  <tr><td><code>expect(value)</code></td><td>断言当前是指定终结符，否则报错</td><td>"这里必须是分号！"</td></tr>
+</table>
+
+<div class="keypoint">
+  <span class="tag">文法是 LL(1) 的</span>
+  <p style="margin:0">每个选择点<b>只看一个 Token</b> 就能决定走哪条分支：顶层看是不是 <code>window/block/rule</code>；
+  块内看条目关键字；<code>operand</code> 看是 INT 还是 <code>window</code>，INT 后面再看有没有 <code>%</code>。
+  不需要回溯，没有左递归——所以递归下降能胜任，不需要 ANTLR 这类生成器。</p>
+</div>
+
+<h2>2.3 互动演示：AST 长什么样</h2>
+<p>下面这棵树的<b>数据来自真实 parser</b>（一个迷你程序的解析结果）。点击节点可以折叠/展开，
+注意每个节点都带着行号——这是语义检查和报错的"回指"能力：</p>
+<details open>
+  <summary>示例源码（点开对照）</summary>
+  <pre class="code">window 8000 ;
+block notes {
+    source: "profile/allergy.md" ;
+    cap: 300 ;
+    priority: must_keep ;
+}
+rule keep_enough {
+    assert: every_block_min_tokens &gt;= 100 ;
+    on_violation: warn ;
+}</pre>
+</details>
+<div class="astree" data-kind="ast"></div>
+<div class="keypoint">
+  <span class="tag">观察要点</span>
+  <ul style="margin:0">
+    <li><code>notes</code> 块没写 <code>overflow</code>，但 AST 里它是 <code>error</code>——<b>缺省值在语法分析时就填入了</b>：
+    must_keep 块缺省 <code>error</code>（死保不裁剪），其他块缺省 <code>truncate_tail</code>，priority 缺省 <code>medium</code>。</li>
+    <li>IR 里所有缺省值都已显式写出，引擎不需要知道 CBL 的缺省规则——这是编译器与引擎解耦的关键一步。</li>
+  </ul>
+</div>
+
+<h2>2.4 终结符匹配的一个真实漏洞（答辩素材）</h2>
+<p><code>_is()</code> 不只比较字面值，还要求 Token 的<b>类型</b>是 KEYWORD 或 SYMBOL：</p>
+<pre class="code">tok.value == value and tok.kind in ("KEYWORD", "SYMBOL")</pre>
+<p>为什么？因为字符串 <code>";"</code> 的字面值和分号<b>一模一样</b>。历史上只比较值时，
+<code>window 8000 ";"</code> 能蒙混过关、<code>"cap": 100</code> 能被当成 cap 条目。
+修复后字符串再也不能冒充终结符，有专门的测试守着（<code>case_strings_cannot_impersonate_terminals</code>）。</p>
+<div class="warn">
+  <span class="tag">答辩素材</span>
+  <p style="margin:0">这个 bug 说明：<b>值相同 ≠ 同一个终结符，词法类别本身就是语法的一部分</b>。被问"词法和语法的界限"时可以用它回答。</p>
+</div>
+
+<h2>2.5 相对 cap：cap 与断言右值共用 operand</h2>
+<p>这是 11 月新加的文法变化：<code>capItem</code> 从 <code>"cap" ":" int ";"</code> 变成了
+<code>"cap" ":" operand ";"</code>，于是两种新写法合法了：</p>
+<pre class="code">cap: 40% ;              <span class="c"># 窗口的 40%</span>
+cap: window * 0.4 ;     <span class="c"># 同上，另一种写法</span></pre>
+<p>好处：<b>换窗口尺寸时不用重算各块额度</b>。实现上有个微妙的点：解析 block 时 window 可能还没声明
+（顺序自由），所以 parser 先把相对 cap 记下来，整条程序解析完、window 已知后再由 <code>_resolve_caps</code>
+折算成绝对值（四舍五入）。<b>AST 下游只看到整数</b>——语义检查、IR、引擎、快照全部零改动。
+真实编译结果：</p>
+<table>
+  <tr><th>源码写法</th><th>IR 里的 cap（真实编译器输出）</th></tr>
+  <tr><td><code>cap: 40% ;</code>（window 8000）</td><td id="cap-pct">…</td></tr>
+  <tr><td><code>cap: window * 0.4 ;</code>（window 8000）</td><td id="cap-scale">…</td></tr>
+</table>
+<script>
+  // 数据来自 build_data.py 的真实编译结果
+  document.addEventListener("DOMContentLoaded", function () {
+    var r = window.TUTORIAL_DATA.relative_cap;
+    document.getElementById("cap-pct").textContent = r.percent.cap;
+    document.getElementById("cap-scale").textContent = r.scale.cap;
+  });
+</script>
+
+<h2>2.6 恐慌模式错误恢复：一次报出全部语法错误</h2>
+<p>旧版 parser 遇到第一个语法错误就抛异常停止。现在的版本：出错后<b>跳到下一个同步点继续分析</b>，
+全部错误收进 <code>ParseErrors</code> 一次报出。同步点规则：</p>
+<table>
+  <tr><th>层级</th><th>同步点</th><th>实现</th></tr>
+  <tr><td>顶层（声明之间）</td><td>消费掉 <code>;</code> 或 <code>}</code> 后停；遇到下一条声明开头（window/block/rule）或 EOF 直接停</td><td><code>_sync_top()</code></td></tr>
+  <tr><td>块内（条目之间）</td><td>消费掉 <code>;</code> 后停；遇到 <code>}</code>（留给外层消费）或 EOF 直接停</td><td><code>_sync_item()</code></td></tr>
+</table>
+<p>下面是一个真实例子（两处错误一次报出，点击右侧错误高亮对应行）：</p>
+<div class="diaglink" data-kind="syntax"></div>
+
+<h2>2.7 动手实验</h2>
+<div class="lab">
+  <span class="tag">实验 1 · 感受错误恢复</span>
+  <pre class="code">printf 'window 8000 ;\nblock a { source: "a.txt" ; cap: 100 }\nblock b { source: "b.txt" ; cap: ; }\n' &gt; t4.cbl
+python -m cbl check t4.cbl</pre>
+  <p style="margin-bottom:0">应看到两条错误（行 2 缺分号、行 3 cap 缺值）一次报出。删掉其中一处再跑，对比"只报一个"的旧体验。</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 2 · 验证相对 cap</span>
+  <p style="margin-bottom:0">写一个 <code>cap: 60% ;</code> 的块，再写一个 <code>cap: 60% ;</code> 的块——两个加起来 120%，
+  编译期被哪条约束拦下？（答案：①预算总量，E101。相对额度折算后照常参与全部检查。）</p>
+</div>
+<div class="lab">
+  <span class="tag">实验 3 · 变异测试</span>
+  <p style="margin-bottom:0">把 <code>_is</code> 里的 <code>and tok.kind in (...)</code> 删掉，跑 <code>python tests/run_tests.py</code>，
+  看哪个用例抓住你。做完记得 <code>git checkout .</code> 还原。</p>
+</div>
+
+<h2>2.8 本课自测</h2>
+<div class="quiz" data-answer="1">
+  <p class="q">1. 递归下降的核心思想是什么？</p>
+  <button class="opt">用栈模拟自动机</button>
+  <button class="opt">一条 EBNF 产生式对应一个函数，函数按文法结构互相调用</button>
+  <button class="opt">从左到右扫描两遍</button>
+  <div class="fb">parse_program / parse_block / parse_operand 的调用关系就是文法的层级结构。</div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">2. 为什么缺省值（如 must_keep 块的 overflow=error）在语法分析阶段就填入，而不是留给引擎？</p>
+  <button class="opt">让 IR 显式完整：引擎不需要知道 CBL 的缺省规则，编译器与引擎可以独立演化</button>
+  <button class="opt">因为语法分析阶段计算更快</button>
+  <button class="opt">随便定的，放哪都一样</button>
+  <div class="fb">这就是"IR 是交接单"的含义——交接单上不能有需要对方猜的隐含规则。</div>
+</div>
+<div class="quiz" data-answer="2">
+  <p class="q">3. <code>cap: 40%</code> 是什么时候折算成绝对值的？</p>
+  <button class="opt">词法分析时</button>
+  <button class="opt">引擎运行时</button>
+  <button class="opt">整条程序解析完、window 已知后，由 parser 的 _resolve_caps 折算（四舍五入）</button>
+  <div class="fb">解析 block 时 window 可能还没声明，所以先记下来，最后统一折算。下游只看到整数。</div>
+</div>
+<div class="quiz" data-answer="1">
+  <p class="q">4. 恐慌模式恢复里，块内同步点为什么不消费 <code>}</code>？</p>
+  <button class="opt">消费了会死循环</button>
+  <button class="opt">} 是块体结束符，要留给外层 parse_block 的 expect("}") 正常消费，块结构才能正确闭合</button>
+  <button class="opt">因为 } 不是界符</button>
+  <div class="fb">同步点的设计原则：跳过坏的部分，但不能吃掉属于上层结构的 token。</div>
+</div>
+
+<details class="think">
+  <summary>思考题：错误恢复会不会把"连带错误"也报出来，误导用户？</summary>
+  <p>会，这是恐慌模式的已知代价（比如块头坏了，块内条目可能被连锁报错）。CBL 的缓解：顶层完整性检查
+  （"缺少 window"之类）只在<b>没有任何语法错误</b>时才做，避免在恢复出的残局上报误导性的次生错误。</p>
+</details>
+
+<button class="done-btn">我学完了这一课</button>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
