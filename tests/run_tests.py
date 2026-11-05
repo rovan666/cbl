@@ -229,10 +229,9 @@ def case_parse_recovers_multiple_errors():
 def case_parse_duplicate_window_no_hang():
     # 第二条 window 报错时必须消费 Token，否则恢复停在原地（曾死循环且错误列表无限增长）
     import threading
-    src = 'window 1000 ;
-window 2000 ;
-block a { source: "a.txt" ; cap: 100 ; }
-'
+    src = ('window 1000 ;\n'
+           'window 2000 ;\n'
+           'block a { source: "a.txt" ; cap: 100 ; }\n')
     caught = []
 
     def run():
