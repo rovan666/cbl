@@ -267,7 +267,7 @@ GLOSSARY = [
 ]
 
 COMMANDS = [
-    ("python tests/run_tests.py", "跑全部 67 个用例"),
+    ("python tests/run_tests.py", "跑全部 68 个用例"),
     ("python -m cbl check examples/medical_assistant.cbl", "编译检查，输出 JSON 组装计划"),
     ("python -m cbl run examples/medical_assistant.cbl", "编译 + 组装，打印文本审计报告"),
     ("… run … --budget 6000", "指定可用额度 B"),

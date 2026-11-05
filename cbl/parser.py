@@ -129,7 +129,7 @@ class Parser:
             try:
                 if self._is(tok, "window"):
                     if prog.window is not None:
-                        raise ParseError("window 声明整个程序只能有一条", tok)
+                        raise ParseError("window 声明整个程序只能有一条", self.advance())   # 必须消费，否则恢复原地打转
                     prog.window = self.parse_window()
                 elif self._is(tok, "block"):
                     prog.blocks.append(self.parse_block())

@@ -72,7 +72,7 @@ python -m cbl check examples/medical_assistant.cbl   # 编译检查，输出 JSO
 python -m cbl run   examples/medical_assistant.cbl   # 编译 + 组装，打印审计报告
 python -m cbl run   examples/medical_assistant.cbl --budget 6000 --out prompt.txt --json audit.json --html audit.html
 python -m cbl serve                                  # 网页演示：预算实验台（见下节）
-python tests/run_tests.py                            # 跑自检（67 个用例）
+python tests/run_tests.py                            # 跑自检（68 个用例）
 ```
 
 cap 除了绝对值，也支持与窗口挂钩的相对写法（换窗口尺寸时不用重算各块额度）：

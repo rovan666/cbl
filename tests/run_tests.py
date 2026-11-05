@@ -226,6 +226,28 @@ def case_parse_recovers_multiple_errors():
         assert [x.line for x in e.errors] == [2, 3], e.errors
 
 
+def case_parse_duplicate_window_no_hang():
+    # 第二条 window 报错时必须消费 Token，否则恢复停在原地（曾死循环且错误列表无限增长）
+    import threading
+    src = 'window 1000 ;
+window 2000 ;
+block a { source: "a.txt" ; cap: 100 ; }
+'
+    caught = []
+
+    def run():
+        try:
+            _compile_text(src)
+        except ParseErrors as e:
+            caught.append(e)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(5)
+    assert not worker.is_alive(), "重复 window 使语法分析卡死"
+    assert [x.line for x in caught[0].errors] == [2], caught[0].errors
+
+
 def case_parse_recovery_keeps_good_decls():
     # 块 a 坏了不影响块 b 与规则正常解析；错误按位置带行列号
     src = ('window 8000 ;\n'
